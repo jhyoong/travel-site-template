@@ -34,12 +34,16 @@ test("empty text is rejected", () => {
 });
 
 test("drafts are checked before they reach the page", () => {
-  const event = { date: "2026-10-29", start: "12:00", end: "11:00", title: " Lunch ", place: "", notes: "" };
-  assert.deepEqual(checkDraft({ needs_more_info: false, reply: "ok", questions: [], event }).event,
-    { date: "2026-10-29", start: "12:00", end: "", title: "Lunch", place: "", notes: "" });
-  assert.throws(() => checkDraft({ needs_more_info: false, reply: "", questions: [], event: { ...event, start: "noon" } }), DraftError);
-  assert.throws(() => checkDraft({ needs_more_info: true, reply: "", questions: [" "], event }), DraftError);
-  assert.deepEqual(checkDraft({ needs_more_info: true, reply: "r", questions: ["Which day?"], event }).questions, ["Which day?"]);
+  const lunch = { date: "2026-10-29", start: "12:00", end: "11:00", title: " Lunch ", place: "", notes: "" };
+  const train = { date: "2026-10-29", start: "09:10", end: "09:20", title: "Train", place: "Iseshi Station", notes: "" };
+  assert.deepEqual(checkDraft({ needs_more_info: false, reply: "ok", questions: [], events: [lunch, train] }).events, [
+    train,
+    { date: "2026-10-29", start: "12:00", end: "", title: "Lunch", place: "", notes: "" },
+  ]);
+  assert.throws(() => checkDraft({ needs_more_info: false, reply: "", questions: [], events: [train, { ...lunch, start: "noon" }] }), DraftError);
+  assert.throws(() => checkDraft({ needs_more_info: false, reply: "", questions: [], events: [] }), DraftError);
+  assert.throws(() => checkDraft({ needs_more_info: true, reply: "", questions: [" "], events: [] }), DraftError);
+  assert.deepEqual(checkDraft({ needs_more_info: true, reply: "r", questions: ["Which day?"], events: [] }).questions, ["Which day?"]);
 });
 
 test("JSON is recovered from fenced or chatty replies and loose shapes are rejected", () => {

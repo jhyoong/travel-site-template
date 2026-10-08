@@ -12,7 +12,7 @@ Open the page through the server, not as a file, so "Describe an event" can reac
 
 ## Describe an event
 
-Type a rough note in the box at the top of the page. The page posts the note and the current plan to `POST /api/draft-event`. The server (`lib/draft.js`) lays the plan out day by day so the model can see the events before and after the slot, then returns either a drafted event card or up to three follow-up questions. Answers go back with the original note until a card comes out. Nothing is added to the plan until you press "Add to plan".
+Type a rough note in the box at the top of the page. The page posts the note and the current plan to `POST /api/draft-event`. The server (`lib/draft.js`) lays the plan out day by day so the model can see the events before and after the slot, then returns either drafted event cards or up to three follow-up questions. A note that covers several times comes back as several cards. Answers go back with the original note until cards come out. Nothing is added to the plan until you press "Add to plan".
 
 The plan itself still lives in the browser's local storage. The server keeps no state.
 

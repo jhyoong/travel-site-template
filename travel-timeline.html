@@ -145,11 +145,13 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .thread .you { color: var(--muted); white-space: pre-wrap; }
 .thread .you b, .thread .ask b { font-weight: 600; color: var(--ink); }
 .thread ul { margin: .25rem 0 0; padding-left: 1.2rem; }
-.draft { border: 1px solid var(--moss); border-radius: .75rem; padding: .85rem 1rem; background: var(--moss-soft); display: grid; gap: .3rem; }
+.draft { display: grid; gap: .5rem; }
+.draft-card { border: 1px solid var(--moss); border-radius: .75rem; padding: .7rem 1rem; background: var(--moss-soft); display: grid; gap: .25rem; justify-items: start; }
 .draft .when { color: var(--moss); font-weight: 600; font-size: .9rem; font-variant-numeric: tabular-nums; }
 .draft h3 { font: 600 1.05rem/1.35 var(--sans); margin: 0; }
 .draft .place, .draft .notes { margin: 0; }
-.draft .compose-row { margin-top: .4rem; }
+.draft-card button.quiet { margin-left: -.5rem; }
+.draft .compose-row { margin-top: .15rem; }
 
 /* Dialog */
 dialog {
@@ -844,19 +846,34 @@ textarea { resize: vertical; min-height: 4.5rem; }
 
     box.textContent = ""; box.hidden = !c.draft;
     if (c.draft) {
-      var e = c.draft.event, day = state.days.find(function (d) { return d.date === e.date; });
-      var when = toDate(e.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) +
-        ", " + e.start + (e.end ? "\u2013" + e.end : "") + (day ? "" : " (adds a new day)");
-      box.appendChild(el("div", "when", when));
-      box.appendChild(el("h3", null, e.title));
-      if (e.place) box.appendChild(el("p", "place", e.place));
-      if (e.notes) box.appendChild(el("p", "notes", e.notes));
-      if (c.draft.reply) box.appendChild(el("p", "meta", c.draft.reply)).style.margin = ".3rem 0 0";
+      var events = c.draft.events;
+      if (c.draft.reply) box.appendChild(el("p", "meta", c.draft.reply)).style.margin = "0";
+      events.forEach(function (e, i) {
+        var day = state.days.find(function (d) { return d.date === e.date; });
+        var card = el("div", "draft-card");
+        card.appendChild(el("div", "when", toDate(e.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) +
+          ", " + e.start + (e.end ? "\u2013" + e.end : "") + (day ? "" : " (adds a new day)")));
+        card.appendChild(el("h3", null, e.title));
+        if (e.place) card.appendChild(el("p", "place", e.place));
+        if (e.notes) card.appendChild(el("p", "notes", e.notes));
+        if (events.length > 1) {
+          var skip = el("button", "quiet", "Remove");
+          skip.setAttribute("aria-label", "Remove " + e.title + " from the draft");
+          skip.addEventListener("click", function () { events.splice(i, 1); renderCompose(); });
+          card.appendChild(skip);
+        }
+        box.appendChild(card);
+      });
       var row = el("div", "compose-row");
-      var add = el("button", "primary", "Add to plan"); add.addEventListener("click", function () { acceptDraft(false); });
-      var edit = el("button", null, "Add and edit"); edit.addEventListener("click", function () { acceptDraft(true); });
+      var add = el("button", "primary", events.length > 1 ? "Add " + events.length + " events to plan" : "Add to plan");
+      add.addEventListener("click", function () { acceptDraft(false); });
+      row.appendChild(add);
+      if (events.length === 1) {
+        var edit = el("button", null, "Add and edit"); edit.addEventListener("click", function () { acceptDraft(true); });
+        row.appendChild(edit);
+      }
       var drop = el("button", "quiet", "Discard"); drop.addEventListener("click", resetCompose);
-      row.appendChild(add); row.appendChild(edit); row.appendChild(drop);
+      row.appendChild(drop);
       box.appendChild(row);
     }
 
@@ -894,7 +911,7 @@ textarea { resize: vertical; min-height: 4.5rem; }
       if (compose !== c) return; // started over while waiting
       if (!res.ok) { restore(res.data.error || "The assistant isn't available. Start the site with npm start and try again."); return; }
       c.busy = false;
-      if (res.data.kind === "event") c.draft = res.data;
+      if (res.data.kind === "events") c.draft = res.data;
       else c.asking = { questions: res.data.questions, reply: res.data.reply };
       renderCompose();
       if (c.asking) $("composeText").focus();
@@ -903,15 +920,19 @@ textarea { resize: vertical; min-height: 4.5rem; }
     });
   }
   function acceptDraft(thenEdit) {
-    var e = compose.draft.event, day = state.days.find(function (d) { return d.date === e.date; });
-    if (!day) { day = { id: uid(), date: e.date, label: "", events: [] }; state.days.push(day); }
-    var item = { id: uid(), start: e.start, end: e.end, title: e.title, place: e.place, maps: "", notes: e.notes };
-    day.events.push(item);
-    selectedId = item.id;
-    resetCompose(); save(); render(); toast("Event added");
-    var node = document.querySelector('.event[data-id="' + item.id + '"]');
+    var added = compose.draft.events.map(function (e) {
+      var day = state.days.find(function (d) { return d.date === e.date; });
+      if (!day) { day = { id: uid(), date: e.date, label: "", events: [] }; state.days.push(day); }
+      var item = { id: uid(), start: e.start, end: e.end, title: e.title, place: e.place, maps: "", notes: e.notes };
+      day.events.push(item);
+      return { day: day, item: item };
+    });
+    var first = added[0];
+    selectedId = first.item.id;
+    resetCompose(); save(); render(); toast(added.length > 1 ? added.length + " events added" : "Event added");
+    var node = document.querySelector('.event[data-id="' + first.item.id + '"]');
     if (node) node.scrollIntoView({ block: "center", behavior: "smooth" });
-    if (thenEdit) openEvent(day.id, item.id);
+    if (thenEdit) openEvent(first.day.id, first.item.id);
   }
   $("composeSend").addEventListener("click", sendCompose);
   $("composeReset").addEventListener("click", resetCompose);
