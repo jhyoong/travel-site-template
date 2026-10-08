@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Travel timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Literata:opsz,wght@7..72,500;7..72,650&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #EEF2EE;
+  --surface: #F8FAF7;
+  --ink: #1E2B27;
+  --muted: #5F6F68;
+  --moss: #3F6B4F;
+  --moss-soft: #DCE7DE;
+  --lake: #2A6580;
+  --line: #C5D0C8;
+  --danger: #9A3B32;
+  --serif: "Literata", Georgia, "Times New Roman", serif;
+  --sans: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #141B18; --surface: #1B2420; --ink: #E2E9E4; --muted: #94A49C;
+    --moss: #8FBB9C; --moss-soft: #24342B; --lake: #82B8D0; --line: #34443C; --danger: #E08A7F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #141B18; --surface: #1B2420; --ink: #E2E9E4; --muted: #94A49C;
+  --moss: #8FBB9C; --moss-soft: #24342B; --lake: #82B8D0; --line: #34443C; --danger: #E08A7F;
+  color-scheme: dark;
+}
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+*, *::before, *::after { box-sizing: inherit; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font: 400 1rem/1.55 var(--sans);
+}
+.wrap { max-width: 44rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+
+/* Header */
+.trip-title {
+  width: 100%; border: 0; background: transparent; color: var(--ink);
+  font: 650 clamp(1.9rem, 6vw, 2.75rem)/1.15 var(--serif);
+  padding: .1em 0; border-bottom: 1px dashed transparent;
+}
+.trip-title:hover, .trip-title:focus { border-bottom-color: var(--line); outline: none; }
+.meta { color: var(--muted); font-size: .9rem; margin: .4rem 0 1.25rem; }
+.toolbar { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 2.5rem; }
+
+button, .btn {
+  font: 500 .9rem/1 var(--sans); color: var(--ink); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: .6rem 1rem;
+}
+button:hover { border-color: var(--moss); }
+button.primary { background: var(--moss); border-color: var(--moss); color: var(--paper); }
+button.quiet { background: transparent; border-color: transparent; color: var(--muted); padding: .35rem .5rem; font-size: .85rem; }
+button.quiet:hover { color: var(--ink); }
+button.danger { color: var(--danger); }
+:focus-visible { outline: 2px solid var(--lake); outline-offset: 2px; }
+
+/* Day */
+.day { margin-bottom: 3rem; transition: opacity 1.2s ease; }
+.day-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--line); padding-bottom: .5rem; }
+.day-num { color: var(--moss); font-weight: 600; font-size: .9rem; }
+.day-date { font: 500 1.5rem/1.2 var(--serif); margin: .1rem 0 0; }
+.day-label { color: var(--muted); margin: .15rem 0 0; }
+.day.past .day-head { opacity: .55; }
+
+/* Timeline */
+.wrap { --g: 1.5rem; --t: 4.25rem; --d: 1.5rem; --gap: .5rem; }
+.events { list-style: none; margin: 0; padding: 0; position: relative; min-height: 2.5rem; }
+.events::before {
+  content: ""; position: absolute; left: calc(var(--g) + var(--t) + var(--gap) * 2 + var(--d) / 2 - 1px);
+  top: .5rem; bottom: .5rem; width: 2px; background: var(--line);
+}
+.event {
+  display: grid; grid-template-columns: var(--g) var(--t) var(--d) 1fr; gap: 0 var(--gap);
+  padding: .55rem .5rem .55rem 0; position: relative; border-radius: .75rem; cursor: pointer;
+  transition: opacity 1.2s ease, filter 1.2s ease, background-color .2s;
+}
+.event:hover { background: color-mix(in srgb, var(--moss-soft) 45%, transparent); }
+.event.selected { background: var(--moss-soft); box-shadow: inset 0 0 0 2px var(--moss); }
+.event.selected.past { opacity: .85; filter: none; }
+.event:focus-visible { outline: 2px solid var(--lake); outline-offset: 2px; }
+.event .row-actions { display: none; }
+.event.selected .row-actions { display: flex; }
+.grip {
+  align-self: start; margin-top: .15rem; width: var(--g); height: 1.75rem; padding: 0;
+  border: 0; border-radius: .4rem; background: transparent; cursor: grab; touch-action: none;
+  display: grid; place-items: center; color: var(--muted);
+}
+.grip:hover { background: var(--moss-soft); color: var(--ink); }
+.grip svg { width: .65rem; height: 1.1rem; fill: currentColor; }
+.event.dragging { opacity: .25; }
+.drag-ghost {
+  position: fixed; z-index: 50; pointer-events: none; margin: 0; list-style: none;
+  background: var(--surface); box-shadow: 0 10px 30px rgba(0,0,0,.18), inset 0 0 0 2px var(--moss);
+  opacity: .95; filter: none; cursor: grabbing;
+}
+.drop-line { list-style: none; height: 3px; border-radius: 3px; background: var(--lake); margin: .15rem 0 .15rem calc(var(--g) + var(--gap)); }
+body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }
+.warn { color: var(--danger); font-size: .9rem; margin: 0; }
+.time { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; padding-top: .1rem; }
+.time small { display: block; color: var(--muted); font-weight: 400; font-size: .8rem; }
+.dot {
+  width: .8rem; height: .8rem; border-radius: 50%; margin: .45rem auto 0;
+  background: var(--paper); border: 2px solid var(--moss); position: relative; z-index: 1;
+}
+.event.current .dot { background: var(--moss); box-shadow: 0 0 0 4px var(--moss-soft); }
+.event.past { opacity: .45; filter: saturate(.25); }
+.event.past .dot { border-color: var(--muted); background: var(--line); }
+.body h3 { font: 600 1.05rem/1.35 var(--sans); margin: 0; }
+.place { margin: .15rem 0 0; color: var(--muted); font-size: .95rem; }
+.maps { color: var(--lake); font-weight: 500; text-underline-offset: 3px; }
+.notes { margin: .35rem 0 0; font-size: .95rem; white-space: pre-wrap; }
+.row-actions { display: flex; gap: .25rem; margin-top: .2rem; margin-left: -.5rem; }
+.now-tag { color: var(--moss); font-size: .8rem; font-weight: 600; }
+
+.now-line { display: grid; grid-template-columns: var(--g) var(--t) var(--d) 1fr; gap: 0 var(--gap); align-items: center; padding: .2rem 0; }
+.now-line span.t { text-align: right; white-space: nowrap; color: var(--moss); font-weight: 600; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.now-line i { display: block; width: .5rem; height: .5rem; border-radius: 50%; background: var(--moss); margin: 0 auto; position: relative; z-index: 1; }
+.now-line b { height: 2px; background: var(--moss); opacity: .6; }
+
+.add-event { margin: .75rem 0 0 calc(var(--g) + var(--t) + var(--gap) * 2); }
+.empty { text-align: center; padding: 3rem 1rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 1rem; }
+.empty p { margin: 0 0 1rem; }
+
+/* Dialog */
+dialog {
+  border: 1px solid var(--line); border-radius: 1rem; padding: 0;
+  background: var(--surface); color: var(--ink); width: min(30rem, calc(100vw - 2rem));
+}
+dialog::backdrop { background: rgba(20, 30, 25, .45); }
+dialog form { padding: 1.5rem; display: grid; gap: .9rem; }
+dialog h2 { font: 650 1.3rem/1.2 var(--serif); margin: 0; }
+label { display: grid; gap: .3rem; font-size: .9rem; font-weight: 500; }
+label span.hint { color: var(--muted); font-weight: 400; font-size: .8rem; }
+input, textarea, select {
+  font: 400 1rem/1.4 var(--sans); color: var(--ink); background: var(--paper);
+  border: 1px solid var(--line); border-radius: .5rem; padding: .55rem .65rem; width: 100%;
+}
+textarea { resize: vertical; min-height: 4.5rem; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.dlg-actions { display: flex; gap: .5rem; justify-content: flex-end; flex-wrap: wrap; margin-top: .25rem; }
+.dlg-actions .left { margin-right: auto; }
+.error { color: var(--danger); font-size: .9rem; margin: 0; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--paper); padding: .6rem 1rem; border-radius: 999px; font-size: .9rem;
+  opacity: 0; pointer-events: none; transition: opacity .3s;
+}
+.toast.show { opacity: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+@media (max-width: 30rem) {
+  .wrap { --g: 1.35rem; --t: 3.1rem; --d: 1.1rem; --gap: .35rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .event, .day, .toast { transition: none; }
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <label class="sr-only" for="tripTitle">Trip name</label>
+  <input id="tripTitle" class="trip-title" maxlength="80" placeholder="Name this trip">
+  <p class="meta" id="meta">Changes save to this browser automatically.</p>
+  <div class="toolbar">
+    <button class="primary" id="addDayBtn">Add day</button>
+    <button id="exportBtn">Export plan</button>
+    <button id="importBtn">Import plan</button>
+    <button class="quiet" id="resetBtn">Start new plan</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+  </div>
+  <div id="days"></div>
+</main>
+
+<dialog id="eventDlg">
+  <form id="eventForm" novalidate>
+    <h2 id="eventDlgTitle">Add event</h2>
+    <label>Day <select id="fDay" required></select></label>
+    <div class="pair">
+      <label>Start <input type="time" id="fStart" required></label>
+      <label>End <span class="hint">Optional</span><input type="time" id="fEnd"></label>
+    </div>
+    <label>Title <input id="fTitle" required maxlength="120" placeholder="e.g. Lunch at the market"></label>
+    <label>Location <input id="fPlace" maxlength="200" placeholder="Place name or address"></label>
+    <label>Google Maps link <span class="hint">Optional. Leave blank to search the location.</span><input id="fMaps" type="url" placeholder="https://maps.app.goo.gl/..."></label>
+    <label>Notes <textarea id="fNotes" maxlength="1000"></textarea></label>
+    <p class="error" id="eventErr" hidden></p>
+    <div class="dlg-actions">
+      <button type="button" class="danger left" id="eventDelete">Delete event</button>
+      <button type="button" id="eventCancel">Cancel</button>
+      <button type="button" class="primary" id="eventSave">Save event</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dayDlg">
+  <form id="dayForm" novalidate>
+    <h2 id="dayDlgTitle">Add day</h2>
+    <label>Date <input type="date" id="dDate" required></label>
+    <label>Label <span class="hint">Optional, e.g. the city you're in</span><input id="dLabel" maxlength="80"></label>
+    <p class="error" id="dayErr" hidden></p>
+    <div class="dlg-actions">
+      <button type="button" class="danger left" id="dayDelete">Delete day</button>
+      <button type="button" id="dayCancel">Cancel</button>
+      <button type="button" class="primary" id="daySave">Save day</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="moveDlg">
+  <form id="moveForm" novalidate>
+    <h2>Set new time</h2>
+    <p class="meta" id="moveInfo" style="margin:0"></p>
+    <div class="pair">
+      <label>Start <input type="time" id="mStart" required></label>
+      <label>End <span class="hint">Optional</span><input type="time" id="mEnd"></label>
+    </div>
+    <p class="warn" id="moveWarn" hidden></p>
+    <p class="error" id="moveErr" hidden></p>
+    <div class="dlg-actions">
+      <button type="button" id="moveCancel">Cancel</button>
+      <button type="button" class="primary" id="moveSave">Save time</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="textDlg">
+  <form id="textForm" novalidate>
+    <h2>Copy your plan</h2>
+    <p class="meta" style="margin:0">Saving files isn't available here. Copy this text and keep it somewhere safe. You can paste it back later with Import plan.</p>
+    <textarea id="exportText" rows="8" readonly></textarea>
+    <div class="dlg-actions">
+      <button type="button" id="copyBtn">Copy text</button>
+      <button type="button" class="primary" id="textDone">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="pasteDlg">
+  <form id="pasteForm" novalidate>
+    <h2>Import plan</h2>
+    <p class="meta" style="margin:0">Choose a plan file, or paste plan text below. This replaces your current plan.</p>
+    <button type="button" id="chooseFileBtn">Choose file</button>
+    <textarea id="pasteText" rows="6" placeholder="Paste plan text here"></textarea>
+    <p class="error" id="pasteErr" hidden></p>
+    <div class="dlg-actions">
+      <button type="button" id="pasteCancel">Cancel</button>
+      <button type="button" class="primary" id="pasteImport">Import pasted text</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "travel-timeline-v1";
+  var $ = function (id) { return document.getElementById(id); };
+  var uid = function () {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  };
+  var pad = function (n) { return String(n).padStart(2, "0"); };
+  var isoDate = function (d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
+  var toDate = function (dateStr, timeStr) {
+    var p = dateStr.split("-").map(Number), t = (timeStr || "00:00").split(":").map(Number);
+    return new Date(p[0], p[1] - 1, p[2], t[0], t[1]);
+  };
+
+  // ---------- State ----------
+  function sampleState() {
+    var today = new Date(), tomorrow = new Date(today.getTime() + 864e5);
+    var a = isoDate(today), b = isoDate(tomorrow);
+    return {
+      title: "Kyoto, sample trip",
+      days: [
+        { id: uid(), date: a, label: "Arrival and Higashiyama", events: [
+          { id: uid(), start: "08:00", end: "09:00", title: "Breakfast near the hotel", place: "Nishiki Market, Kyoto", maps: "", notes: "" },
+          { id: uid(), start: "10:00", end: "12:30", title: "Walk the old streets", place: "Sannenzaka, Kyoto", maps: "", notes: "Wear comfortable shoes." },
+          { id: uid(), start: "18:30", end: "", title: "Dinner", place: "Pontocho Alley, Kyoto", maps: "", notes: "" }
+        ]},
+        { id: uid(), date: b, label: "Arashiyama", events: [
+          { id: uid(), start: "07:30", end: "09:30", title: "Bamboo grove before the crowds", place: "Arashiyama Bamboo Grove", maps: "", notes: "" },
+          { id: uid(), start: "13:00", end: "15:00", title: "Temple visit", place: "Tenryu-ji, Kyoto", maps: "", notes: "Edit or delete these sample events to start your own plan." }
+        ]}
+      ]
+    };
+  }
+
+  var storageOk = true;
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var s = JSON.parse(raw); if (valid(s)) return s; }
+    } catch (e) { storageOk = false; }
+    return sampleState();
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); storageOk = true; }
+    catch (e) { storageOk = false; }
+    $("meta").textContent = storageOk
+      ? "Changes save to this browser automatically."
+      : "This browser isn't saving changes. Use Export plan to keep a copy.";
+  }
+  function valid(s) {
+    return s && typeof s === "object" && Array.isArray(s.days) && s.days.every(function (d) {
+      return d && typeof d.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && Array.isArray(d.events);
+    });
+  }
+  function normalize(s) {
+    return {
+      title: String(s.title || ""),
+      days: s.days.map(function (d) {
+        return { id: d.id || uid(), date: d.date, label: String(d.label || ""), events: d.events.map(function (e) {
+          return { id: e.id || uid(), start: String(e.start || "00:00"), end: String(e.end || ""), title: String(e.title || "Untitled"),
+                   place: String(e.place || ""), maps: String(e.maps || ""), notes: String(e.notes || "") };
+        })};
+      })
+    };
+  }
+
+  var state = normalize(load());
+
+  // ---------- Rendering ----------
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function mapsUrl(e) {
+    if (e.maps && /^https?:\/\//i.test(e.maps)) return e.maps;
+    if (e.place) return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(e.place);
+    return "";
+  }
+  function eventEnd(day, e) { return toDate(day.date, e.end || e.start); }
+
+  function render() {
+    var root = $("days");
+    root.textContent = "";
+    var now = new Date();
+    state.days.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+
+    if (!state.days.length) {
+      var empty = el("div", "empty");
+      empty.appendChild(el("p", null, "No days yet. Add the first day of your trip to start building the timeline."));
+      var b = el("button", "primary", "Add day");
+      b.addEventListener("click", function () { openDay(null); });
+      empty.appendChild(b);
+      root.appendChild(empty);
+      return;
+    }
+
+    var first = toDate(state.days[0].date);
+    state.days.forEach(function (day) {
+      day.events.sort(function (a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+      var dayNum = Math.round((toDate(day.date) - first) / 864e5) + 1;
+      var dayEnd = toDate(day.date, "23:59");
+      var allPast = day.events.length ? day.events.every(function (e) { return eventEnd(day, e) < now; }) : dayEnd < now;
+
+      var sec = el("section", "day" + (allPast ? " past" : ""));
+      sec.dataset.day = day.id;
+      var head = el("div", "day-head");
+      var hl = el("div");
+      hl.appendChild(el("div", "day-num", "Day " + dayNum));
+      hl.appendChild(el("h2", "day-date", toDate(day.date).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })));
+      if (day.label) hl.appendChild(el("p", "day-label", day.label));
+      head.appendChild(hl);
+      var editDay = el("button", "quiet", "Edit day");
+      editDay.addEventListener("click", function () { openDay(day.id); });
+      head.appendChild(editDay);
+      sec.appendChild(head);
+
+      var list = el("ol", "events");
+      var isToday = day.date === isoDate(now);
+      var nowPlaced = false;
+      var nowStr = pad(now.getHours()) + ":" + pad(now.getMinutes());
+
+      day.events.forEach(function (e) {
+        var start = toDate(day.date, e.start), end = eventEnd(day, e);
+        var past = end < now, current = !past && start <= now && e.end;
+        if (isToday && !nowPlaced && start > now) { list.appendChild(nowLine(nowStr)); nowPlaced = true; }
+
+        var li = el("li", "event" + (past ? " past" : "") + (current ? " current" : "") + (e.id === selectedId ? " selected" : ""));
+        li.dataset.day = day.id; li.dataset.id = e.id; li.tabIndex = 0;
+        li.setAttribute("aria-label", e.start + ", " + e.title + (e.id === selectedId ? ", selected" : ""));
+        li.addEventListener("click", function (ev) {
+          if (ev.target.closest("a, button")) return;
+          select(selectedId === e.id ? null : e.id);
+        });
+        li.addEventListener("keydown", function (ev) {
+          if (ev.target !== li) return;
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(selectedId === e.id ? null : e.id); }
+          else if (ev.altKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) { ev.preventDefault(); keyMove(day.id, e.id, ev.key === "ArrowUp" ? -1 : 1); }
+        });
+        var grip = el("button", "grip");
+        grip.type = "button";
+        grip.setAttribute("aria-label", "Drag to move " + e.title + ". With the event selected, Alt plus arrow keys also move it.");
+        grip.innerHTML = '<svg viewBox="0 0 6 10" aria-hidden="true"><circle cx="1" cy="1" r="1"/><circle cx="5" cy="1" r="1"/><circle cx="1" cy="5" r="1"/><circle cx="5" cy="5" r="1"/><circle cx="1" cy="9" r="1"/><circle cx="5" cy="9" r="1"/></svg>';
+        grip.addEventListener("pointerdown", function (ev) { startDrag(ev, day.id, e.id, li); });
+        li.appendChild(grip);
+        var t = el("div", "time", e.start);
+        if (e.end) t.appendChild(el("small", null, "to " + e.end));
+        li.appendChild(t);
+        li.appendChild(el("div", "dot"));
+        var body = el("div", "body");
+        var h = el("h3", null, e.title);
+        if (current) { h.appendChild(document.createTextNode(" ")); h.appendChild(el("span", "now-tag", "Happening now")); }
+        body.appendChild(h);
+        var url = mapsUrl(e);
+        if (e.place || url) {
+          var p = el("p", "place");
+          if (e.place) p.appendChild(document.createTextNode(e.place + "  "));
+          if (url) {
+            var a = el("a", "maps", "Open in Google Maps");
+            a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
+            p.appendChild(a);
+          }
+          body.appendChild(p);
+        }
+        if (e.notes) body.appendChild(el("p", "notes", e.notes));
+        var acts = el("div", "row-actions");
+        var edit = el("button", "quiet", "Edit");
+        edit.setAttribute("aria-label", "Edit " + e.title);
+        edit.addEventListener("click", function () { openEvent(day.id, e.id); });
+        acts.appendChild(edit);
+        body.appendChild(acts);
+        li.appendChild(body);
+        list.appendChild(li);
+      });
+      if (isToday && !nowPlaced) list.appendChild(nowLine(nowStr));
+      sec.appendChild(list);
+
+      var add = el("button", "add-event", "Add event");
+      add.addEventListener("click", function () { openEvent(day.id, null); });
+      sec.appendChild(add);
+      root.appendChild(sec);
+    });
+  }
+  function nowLine(str) {
+    var li = el("li", "now-line");
+    li.setAttribute("aria-label", "Current time " + str);
+    li.appendChild(el("span"));
+    li.appendChild(el("span", "t", "Now " + str));
+    li.appendChild(el("i"));
+    li.appendChild(el("b"));
+    return li;
+  }
+
+  // ---------- Day dialog ----------
+  var editingDay = null;
+  function findDay(id) { return state.days.find(function (d) { return d.id === id; }); }
+  function openDay(id) {
+    editingDay = id;
+    var d = id ? findDay(id) : null;
+    $("dayDlgTitle").textContent = d ? "Edit day" : "Add day";
+    var suggest = new Date();
+    if (!d && state.days.length) { suggest = toDate(state.days[state.days.length - 1].date); suggest.setDate(suggest.getDate() + 1); }
+    $("dDate").value = d ? d.date : isoDate(suggest);
+    $("dLabel").value = d ? d.label : "";
+    $("dayDelete").hidden = !d;
+    $("dayErr").hidden = true;
+    $("dayDlg").showModal();
+  }
+  $("daySave").addEventListener("click", function () {
+    var date = $("dDate").value;
+    if (!date) { $("dayErr").textContent = "Choose a date for this day."; $("dayErr").hidden = false; return; }
+    var clash = state.days.find(function (d) { return d.date === date && d.id !== editingDay; });
+    if (clash) { $("dayErr").textContent = "That date is already in the plan. Choose another date."; $("dayErr").hidden = false; return; }
+    if (editingDay) { var d = findDay(editingDay); d.date = date; d.label = $("dLabel").value.trim(); }
+    else state.days.push({ id: uid(), date: date, label: $("dLabel").value.trim(), events: [] });
+    save(); render(); $("dayDlg").close(); toast(editingDay ? "Day saved" : "Day added");
+  });
+  $("dayCancel").addEventListener("click", function () { $("dayDlg").close(); });
+  $("dayDelete").addEventListener("click", function () {
+    var d = findDay(editingDay);
+    if (d.events.length && !confirm("Delete this day and its " + d.events.length + " event(s)?")) return;
+    state.days = state.days.filter(function (x) { return x.id !== editingDay; });
+    save(); render(); $("dayDlg").close(); toast("Day deleted");
+  });
+
+  // ---------- Event dialog ----------
+  var editingEv = null;
+  function openEvent(dayId, evId) {
+    if (!state.days.length) { openDay(null); return; }
+    editingEv = { dayId: dayId, evId: evId };
+    var day = findDay(dayId), e = evId ? day.events.find(function (x) { return x.id === evId; }) : null;
+    var sel = $("fDay"); sel.textContent = "";
+    state.days.forEach(function (d, i) {
+      var o = el("option", null, "Day " + (i + 1) + ", " + toDate(d.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }));
+      o.value = d.id; sel.appendChild(o);
+    });
+    sel.value = dayId;
+    $("eventDlgTitle").textContent = e ? "Edit event" : "Add event";
+    var lastStart = day.events.length ? day.events[day.events.length - 1].end || day.events[day.events.length - 1].start : "09:00";
+    $("fStart").value = e ? e.start : lastStart;
+    $("fEnd").value = e ? e.end : "";
+    $("fTitle").value = e ? e.title : "";
+    $("fPlace").value = e ? e.place : "";
+    $("fMaps").value = e ? e.maps : "";
+    $("fNotes").value = e ? e.notes : "";
+    $("eventDelete").hidden = !e;
+    $("eventErr").hidden = true;
+    $("eventDlg").showModal();
+    $("fTitle").focus();
+  }
+  $("eventSave").addEventListener("click", function () {
+    var start = $("fStart").value, end = $("fEnd").value;
+    if (!start) { $("eventErr").textContent = "Enter a start time."; $("eventErr").hidden = false; return; }
+    if (!$("fTitle").value.trim()) { $("eventErr").textContent = "Enter a title for this event."; $("eventErr").hidden = false; return; }
+    if (end && end <= start) { $("eventErr").textContent = "End time must be after the start time."; $("eventErr").hidden = false; return; }
+    var data = { start: start, end: end, title: $("fTitle").value.trim() || "Untitled",
+                 place: $("fPlace").value.trim(), maps: $("fMaps").value.trim(), notes: $("fNotes").value.trim() };
+    var fromDay = findDay(editingEv.dayId), toDay = findDay($("fDay").value);
+    if (editingEv.evId) {
+      var idx = fromDay.events.findIndex(function (x) { return x.id === editingEv.evId; });
+      var item = Object.assign(fromDay.events[idx], data);
+      if (fromDay !== toDay) { fromDay.events.splice(idx, 1); toDay.events.push(item); }
+    } else {
+      data.id = uid(); toDay.events.push(data);
+    }
+    save(); render(); $("eventDlg").close(); toast(editingEv.evId ? "Event saved" : "Event added");
+  });
+  $("eventCancel").addEventListener("click", function () { $("eventDlg").close(); });
+  $("eventDelete").addEventListener("click", function () {
+    var day = findDay(editingEv.dayId);
+    day.events = day.events.filter(function (x) { return x.id !== editingEv.evId; });
+    save(); render(); $("eventDlg").close(); toast("Event deleted");
+  });
+
+  // ---------- Selection ----------
+  var selectedId = null;
+  function focusEvent(id) {
+    var n = id && document.querySelector('.event[data-id="' + id + '"]');
+    if (n) n.focus({ preventScroll: false });
+  }
+  function select(id) { selectedId = id; render(); focusEvent(id); }
+  document.addEventListener("click", function (ev) {
+    if (selectedId && !ev.target.closest(".event, dialog")) select(null);
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") return;
+    if (drag) { cancelDrag(); return; }
+    if (selectedId && !document.querySelector("dialog[open]")) select(null);
+  });
+
+  // ---------- Time helpers ----------
+  var toMin = function (t) { var p = t.split(":").map(Number); return p[0] * 60 + p[1]; };
+  var toTime = function (m) { m = Math.max(0, Math.min(1439, Math.round(m))); return pad(Math.floor(m / 60)) + ":" + pad(m % 60); };
+  var shortDate = function (d) { return toDate(d.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }); };
+
+  // ---------- Drag and drop ----------
+  var drag = null;
+  function startDrag(ev, dayId, evId, li) {
+    if (ev.button !== undefined && ev.button !== 0) return;
+    ev.preventDefault();
+    var r = li.getBoundingClientRect();
+    var ghost = li.cloneNode(true);
+    ghost.classList.add("drag-ghost"); ghost.classList.remove("past", "dragging");
+    ghost.style.width = r.width + "px"; ghost.style.left = r.left + "px"; ghost.style.top = r.top + "px";
+    document.body.appendChild(ghost);
+    var line = el("li", "drop-line"); line.setAttribute("aria-hidden", "true");
+    drag = { dayId: dayId, evId: evId, li: li, ghost: ghost, line: line, offY: ev.clientY - r.top, left: r.left,
+             y: ev.clientY, target: null, pointerId: ev.pointerId };
+    li.classList.add("dragging");
+    document.body.classList.add("is-dragging");
+    window.addEventListener("pointermove", onDragMove);
+    window.addEventListener("pointerup", onDragEnd);
+    window.addEventListener("pointercancel", cancelDrag);
+    drag.scrollTimer = setInterval(autoScroll, 16);
+    onDragMove(ev);
+  }
+  function autoScroll() {
+    if (!drag) return;
+    var edge = 70, y = drag.y, h = window.innerHeight;
+    if (y < edge) window.scrollBy(0, -Math.ceil((edge - y) / 5));
+    else if (y > h - edge) window.scrollBy(0, Math.ceil((y - (h - edge)) / 5));
+    locate();
+  }
+  function onDragMove(ev) {
+    if (!drag) return;
+    drag.y = ev.clientY;
+    drag.ghost.style.top = (ev.clientY - drag.offY) + "px";
+    locate();
+  }
+  function locate() {
+    var days = Array.prototype.slice.call(document.querySelectorAll("#days .day"));
+    if (!days.length) return;
+    var y = drag.y, sec = null;
+    for (var i = 0; i < days.length; i++) {
+      var r = days[i].getBoundingClientRect();
+      if (y < r.bottom || i === days.length - 1) { sec = days[i]; break; }
+    }
+    var list = sec.querySelector(".events");
+    var items = Array.prototype.slice.call(list.querySelectorAll(".event")).filter(function (n) { return n !== drag.li; });
+    var idx = items.length, ref = null;
+    for (var j = 0; j < items.length; j++) {
+      var b = items[j].getBoundingClientRect();
+      if (y < b.top + b.height / 2) { idx = j; ref = items[j]; break; }
+    }
+    if (ref) list.insertBefore(drag.line, ref); else list.appendChild(drag.line);
+    drag.target = { dayId: sec.dataset.day, index: idx };
+  }
+  function endDragUI() {
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", onDragEnd);
+    window.removeEventListener("pointercancel", cancelDrag);
+    clearInterval(drag.scrollTimer);
+    drag.ghost.remove(); drag.line.remove();
+    drag.li.classList.remove("dragging");
+    document.body.classList.remove("is-dragging");
+  }
+  function cancelDrag() { if (!drag) return; endDragUI(); drag = null; }
+  function onDragEnd() {
+    if (!drag) return;
+    var d = drag; endDragUI(); drag = null;
+    if (!d.target) return;
+    var fromDay = findDay(d.dayId);
+    var origIndex = fromDay.events.findIndex(function (x) { return x.id === d.evId; });
+    if (d.target.dayId === d.dayId && d.target.index === origIndex) return; // dropped where it was
+    openMove(d.dayId, d.evId, d.target.dayId, d.target.index);
+  }
+
+  // Keyboard alternative: Alt + Up/Down moves the selected event one place.
+  function keyMove(dayId, evId, dir) {
+    if (selectedId !== evId) { select(evId); }
+    var di = state.days.findIndex(function (d) { return d.id === dayId; });
+    var day = state.days[di];
+    var others = day.events.filter(function (x) { return x.id !== evId; });
+    var idx = day.events.findIndex(function (x) { return x.id === evId; }) + dir;
+    if (idx >= 0 && idx <= others.length) { openMove(dayId, evId, dayId, idx); return; }
+    var nd = state.days[di + dir];
+    if (!nd) return;
+    openMove(dayId, evId, nd.id, dir < 0 ? nd.events.length : 0);
+  }
+
+  // ---------- Move popup ----------
+  var pendingMove = null;
+  function openMove(fromDayId, evId, toDayId, index) {
+    var fromDay = findDay(fromDayId), toDay = findDay(toDayId);
+    var e = fromDay.events.find(function (x) { return x.id === evId; });
+    var others = toDay.events.filter(function (x) { return x.id !== evId; });
+    var prev = others[index - 1], next = others[index];
+    var dur = e.end ? toMin(e.end) - toMin(e.start) : null;
+    var start;
+    if (prev) start = toMin(prev.end || prev.start);
+    else if (next) start = toMin(next.start) - (dur != null ? dur : 60);
+    else start = toMin(e.start);
+    start = Math.max(0, Math.min(1439, start));
+    $("mStart").value = toTime(start);
+    $("mEnd").value = dur != null ? toTime(start + dur) : "";
+    pendingMove = { fromDayId: fromDayId, evId: evId, toDayId: toDayId, index: index, others: others };
+    var dayNum = state.days.indexOf(toDay) + 1;
+    $("moveInfo").textContent = "Moving \u201C" + e.title + "\u201D to Day " + dayNum + ", " + shortDate(toDay) +
+      (prev ? ", after " + prev.title : next ? ", before " + next.title : "") + ".";
+    $("moveErr").hidden = true;
+    checkOverlap();
+    $("moveDlg").showModal();
+    $("mStart").focus();
+  }
+  function checkOverlap() {
+    if (!pendingMove) return;
+    var s = $("mStart").value, e = $("mEnd").value || s;
+    if (!s) { $("moveWarn").hidden = true; return; }
+    var a = toMin(s), b = toMin(e);
+    var hits = pendingMove.others.filter(function (o) {
+      var os = toMin(o.start), oe = toMin(o.end || o.start);
+      if (a === b) return a > os && a < oe;            // point event inside another
+      if (os === oe) return os > a && os < b;          // other point event inside this one
+      return a < oe && os < b;
+    });
+    var w = $("moveWarn");
+    if (hits.length) {
+      w.textContent = "This overlaps with " + hits.map(function (h) { return h.title + " (" + h.start + (h.end ? "\u2013" + h.end : "") + ")"; }).join(" and ") + ". You can still save it.";
+      w.hidden = false;
+    } else w.hidden = true;
+  }
+  $("mStart").addEventListener("input", checkOverlap);
+  $("mEnd").addEventListener("input", checkOverlap);
+  $("moveCancel").addEventListener("click", function () { $("moveDlg").close(); });
+  $("moveDlg").addEventListener("close", function () {
+    var id = pendingMove && pendingMove.evId; pendingMove = null; if (id) focusEvent(id);
+  });
+  $("moveSave").addEventListener("click", function () {
+    var s = $("mStart").value, e = $("mEnd").value;
+    if (!pendingMove) { $("moveDlg").close(); return; }
+    if (!s) { $("moveErr").textContent = "Enter a start time."; $("moveErr").hidden = false; return; }
+    if (e && e <= s) { $("moveErr").textContent = "End time must be after the start time."; $("moveErr").hidden = false; return; }
+    var m = pendingMove;
+    var fromDay = findDay(m.fromDayId), toDay = findDay(m.toDayId);
+    var i = fromDay.events.findIndex(function (x) { return x.id === m.evId; });
+    var item = fromDay.events.splice(i, 1)[0];
+    item.start = s; item.end = e;
+    toDay.events.splice(m.index, 0, item);
+    selectedId = item.id;
+    save(); render(); $("moveDlg").close(); toast("Event moved");
+  });
+
+  // ---------- Title ----------
+  $("tripTitle").value = state.title;
+  $("tripTitle").addEventListener("input", function () {
+    state.title = this.value; document.title = (this.value || "Travel timeline"); save();
+  });
+  document.title = state.title || "Travel timeline";
+
+  // ---------- Toolbar ----------
+  $("addDayBtn").addEventListener("click", function () { openDay(null); });
+  $("resetBtn").addEventListener("click", function () {
+    if (!confirm("Clear the current plan and start a new one? Export it first if you want to keep it.")) return;
+    state = { title: "", days: [] }; $("tripTitle").value = ""; save(); render(); toast("New plan started");
+  });
+
+  var downloads = null;
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then(function (d) { downloads = d; }).catch(function () { downloads = null; });
+  }
+  function fileName() {
+    return ((state.title || "travel-plan").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "travel-plan") + ".json";
+  }
+  $("exportBtn").addEventListener("click", function () {
+    var json = JSON.stringify(state, null, 2);
+    if (downloads) {
+      downloads.save({ filename: fileName(), data: json })
+        .then(function () { toast("Plan exported"); })
+        .catch(function (err) {
+          if (err && err.code === "declined") return;
+          showText(json);
+        });
+    } else showText(json);
+  });
+  function showText(json) { $("exportText").value = json; $("textDlg").showModal(); $("exportText").select(); }
+  $("copyBtn").addEventListener("click", function () {
+    var t = $("exportText"); t.select();
+    var done = function () { toast("Plan copied"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.value).then(done, function () { try { document.execCommand("copy"); done(); } catch (e) {} });
+    else { try { document.execCommand("copy"); done(); } catch (e) {} }
+  });
+
+  $("importBtn").addEventListener("click", function () { $("pasteText").value = ""; $("pasteErr").hidden = true; $("pasteDlg").showModal(); });
+  $("pasteCancel").addEventListener("click", function () { $("pasteDlg").close(); });
+  $("chooseFileBtn").addEventListener("click", function () { $("importFile").click(); });
+  function applyImport(text) {
+    try {
+      var s = JSON.parse(text);
+      if (!valid(s)) throw new Error();
+      state = normalize(s); $("tripTitle").value = state.title; document.title = state.title || "Travel timeline";
+      save(); render(); toast("Plan imported"); return true;
+    } catch (e) {
+      $("pasteErr").textContent = "That isn't a plan exported from this page. Check the file or text and try again.";
+      $("pasteErr").hidden = false; return false;
+    }
+  }
+  $("importFile").addEventListener("change", function () {
+    var f = this.files && this.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { if (applyImport(r.result)) $("pasteDlg").close(); };
+    r.readAsText(f); this.value = "";
+  });
+  $("pasteImport").addEventListener("click", function () { if (applyImport($("pasteText").value)) $("pasteDlg").close(); });
+  $("textDone").addEventListener("click", function () { $("textDlg").close(); });
+
+  // Forms never submit; Enter in a single-line field presses that popup's main button.
+  Array.prototype.forEach.call(document.querySelectorAll("dialog form"), function (f) {
+    f.addEventListener("submit", function (ev) { ev.preventDefault(); });
+    f.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && ev.target.tagName === "INPUT") {
+        ev.preventDefault();
+        var b = f.querySelector("button.primary"); if (b) b.click();
+      }
+    });
+  });
+
+  var toastTimer;
+  function toast(msg) {
+    var t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 1800);
+  }
+
+  // ---------- Start ----------
+  save(); render();
+  setInterval(function () { if (!drag) render(); }, 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && !drag) render(); });
+})();
+</script>
+</body>
+</html>
