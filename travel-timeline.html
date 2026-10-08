@@ -134,6 +134,23 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .empty { text-align: center; padding: 3rem 1rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 1rem; }
 .empty p { margin: 0 0 1rem; }
 
+/* Describe-an-event composer */
+.compose { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; padding: 1rem; margin-bottom: 2.5rem; display: grid; gap: .65rem; }
+.compose textarea { min-height: 3.4rem; }
+.compose-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.compose-status { color: var(--muted); font-size: .85rem; }
+.compose button:disabled { opacity: .55; cursor: default; }
+.thread { display: grid; gap: .5rem; font-size: .95rem; }
+.thread p { margin: 0; }
+.thread .you { color: var(--muted); white-space: pre-wrap; }
+.thread .you b, .thread .ask b { font-weight: 600; color: var(--ink); }
+.thread ul { margin: .25rem 0 0; padding-left: 1.2rem; }
+.draft { border: 1px solid var(--moss); border-radius: .75rem; padding: .85rem 1rem; background: var(--moss-soft); display: grid; gap: .3rem; }
+.draft .when { color: var(--moss); font-weight: 600; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.draft h3 { font: 600 1.05rem/1.35 var(--sans); margin: 0; }
+.draft .place, .draft .notes { margin: 0; }
+.draft .compose-row { margin-top: .4rem; }
+
 /* Dialog */
 dialog {
   border: 1px solid var(--line); border-radius: 1rem; padding: 0;
@@ -181,6 +198,20 @@ textarea { resize: vertical; min-height: 4.5rem; }
     <button class="quiet" id="resetBtn">Start new plan</button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
   </div>
+  <section class="compose" aria-labelledby="composeLabel">
+    <label id="composeLabel" for="composeText">Describe an event
+      <span class="hint" id="composeHint">Write it the way you'd say it. The assistant reads your plan and fits the event around what's already there.</span>
+      <textarea id="composeText" maxlength="2000" placeholder="e.g. Sukiyaki lunch at Wadakin on the Matsusaka day, booked for 12"></textarea>
+    </label>
+    <div class="thread" id="composeThread" hidden></div>
+    <div class="compose-row">
+      <button class="primary" id="composeSend">Draft event</button>
+      <button class="quiet" id="composeReset" hidden>Start over</button>
+      <span class="compose-status" id="composeStatus" role="status" aria-live="polite"></span>
+    </div>
+    <p class="error" id="composeErr" hidden></p>
+    <div class="draft" id="composeDraft" hidden></div>
+  </section>
   <div id="days"></div>
 </main>
 
@@ -548,7 +579,7 @@ textarea { resize: vertical; min-height: 4.5rem; }
   }
   function select(id) { selectedId = id; render(); focusEvent(id); }
   document.addEventListener("click", function (ev) {
-    if (selectedId && !ev.target.closest(".event, dialog")) select(null);
+    if (selectedId && ev.target.isConnected && !ev.target.closest(".event, dialog, .compose")) select(null);
   });
   document.addEventListener("keydown", function (ev) {
     if (ev.key !== "Escape") return;
@@ -787,6 +818,107 @@ textarea { resize: vertical; min-height: 4.5rem; }
     var t = $("toast"); t.textContent = msg; t.classList.add("show");
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 1800);
   }
+
+  // ---------- Describe an event ----------
+  // note: the first message. turns: answered follow-ups. asking: questions awaiting an answer.
+  var compose = { note: "", turns: [], asking: null, draft: null, busy: false };
+  function composeError(msg) { $("composeErr").textContent = msg || ""; $("composeErr").hidden = !msg; }
+  function renderCompose() {
+    var c = compose, thread = $("composeThread"), box = $("composeDraft");
+    thread.textContent = "";
+    if (c.note) {
+      var you = el("p", "you"); you.appendChild(el("b", null, "You: ")); you.appendChild(document.createTextNode(c.note));
+      thread.appendChild(you);
+    }
+    c.turns.concat(c.asking ? [{ questions: c.asking.questions, reply: c.asking.reply }] : []).forEach(function (t) {
+      var ask = el("div", "ask");
+      ask.appendChild(el("b", null, t.reply || "A few questions:"));
+      var ul = el("ul"); t.questions.forEach(function (q) { ul.appendChild(el("li", null, q)); });
+      ask.appendChild(ul); thread.appendChild(ask);
+      if (t.answer) {
+        var ans = el("p", "you"); ans.appendChild(el("b", null, "You: ")); ans.appendChild(document.createTextNode(t.answer));
+        thread.appendChild(ans);
+      }
+    });
+    thread.hidden = !thread.childNodes.length;
+
+    box.textContent = ""; box.hidden = !c.draft;
+    if (c.draft) {
+      var e = c.draft.event, day = state.days.find(function (d) { return d.date === e.date; });
+      var when = toDate(e.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) +
+        ", " + e.start + (e.end ? "\u2013" + e.end : "") + (day ? "" : " (adds a new day)");
+      box.appendChild(el("div", "when", when));
+      box.appendChild(el("h3", null, e.title));
+      if (e.place) box.appendChild(el("p", "place", e.place));
+      if (e.notes) box.appendChild(el("p", "notes", e.notes));
+      if (c.draft.reply) box.appendChild(el("p", "meta", c.draft.reply)).style.margin = ".3rem 0 0";
+      var row = el("div", "compose-row");
+      var add = el("button", "primary", "Add to plan"); add.addEventListener("click", function () { acceptDraft(false); });
+      var edit = el("button", null, "Add and edit"); edit.addEventListener("click", function () { acceptDraft(true); });
+      var drop = el("button", "quiet", "Discard"); drop.addEventListener("click", resetCompose);
+      row.appendChild(add); row.appendChild(edit); row.appendChild(drop);
+      box.appendChild(row);
+    }
+
+    $("composeText").hidden = !!c.draft;
+    $("composeText").placeholder = c.asking ? "Your answer" : "e.g. Sukiyaki lunch at Wadakin on the Matsusaka day, booked for 12";
+    $("composeHint").hidden = !!c.note;
+    $("composeSend").hidden = !!c.draft;
+    $("composeSend").textContent = c.asking ? "Send answer" : "Draft event";
+    $("composeSend").disabled = c.busy; $("composeText").disabled = c.busy;
+    $("composeReset").hidden = !c.note || !!c.draft || c.busy;
+    $("composeStatus").textContent = c.busy ? "Reading your plan\u2026" : "";
+  }
+  function resetCompose() {
+    compose = { note: "", turns: [], asking: null, draft: null, busy: false };
+    $("composeText").value = ""; composeError(""); renderCompose();
+  }
+  function sendCompose() {
+    var c = compose, text = $("composeText").value.trim();
+    if (c.busy || c.draft) return;
+    if (!text) { composeError(c.asking ? "Type an answer first." : "Describe the event you want to add."); return; }
+    var prev = { note: c.note, turns: c.turns.slice(), asking: c.asking };
+    if (c.asking) { c.turns.push({ questions: c.asking.questions, reply: c.asking.reply, answer: text }); c.asking = null; }
+    else c.note = text;
+    c.busy = true; composeError(""); $("composeText").value = ""; renderCompose();
+    var restore = function (msg) {
+      c.note = prev.note; c.turns = prev.turns; c.asking = prev.asking; c.busy = false;
+      $("composeText").value = text; composeError(msg); renderCompose();
+    };
+    fetch("/api/draft-event", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: c.note, followUps: c.turns, plan: state, today: isoDate(new Date()) })
+    }).then(function (r) {
+      return r.json().then(function (data) { return { ok: r.ok, data: data }; }, function () { return { ok: false, data: {} }; });
+    }).then(function (res) {
+      if (compose !== c) return; // started over while waiting
+      if (!res.ok) { restore(res.data.error || "The assistant isn't available. Start the site with npm start and try again."); return; }
+      c.busy = false;
+      if (res.data.kind === "event") c.draft = res.data;
+      else c.asking = { questions: res.data.questions, reply: res.data.reply };
+      renderCompose();
+      if (c.asking) $("composeText").focus();
+    }).catch(function () {
+      if (compose === c) restore("Couldn't reach the assistant. Open this page through the server (npm start) and check your connection.");
+    });
+  }
+  function acceptDraft(thenEdit) {
+    var e = compose.draft.event, day = state.days.find(function (d) { return d.date === e.date; });
+    if (!day) { day = { id: uid(), date: e.date, label: "", events: [] }; state.days.push(day); }
+    var item = { id: uid(), start: e.start, end: e.end, title: e.title, place: e.place, maps: "", notes: e.notes };
+    day.events.push(item);
+    selectedId = item.id;
+    resetCompose(); save(); render(); toast("Event added");
+    var node = document.querySelector('.event[data-id="' + item.id + '"]');
+    if (node) node.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (thenEdit) openEvent(day.id, item.id);
+  }
+  $("composeSend").addEventListener("click", sendCompose);
+  $("composeReset").addEventListener("click", resetCompose);
+  $("composeText").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sendCompose(); }
+  });
+  renderCompose();
 
   // ---------- Start ----------
   save(); render();
