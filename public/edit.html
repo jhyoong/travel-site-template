@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit itinerary</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./">Itinerary</a>
+    <div class="user-bar">
+      <a href="./">View itinerary</a>
+      <span id="signed-in" hidden></span>
+      <button type="button" id="logout-button" class="secondary" hidden>Log out</button>
+    </div>
+  </header>
+
+  <main>
+    <p id="status" class="status">Loading...</p>
+    <p id="page-error" class="error" role="alert" hidden></p>
+
+    <section id="login-section" class="card" hidden>
+      <h2>Sign in</h2>
+      <form id="login-form">
+        <label for="login-key">Your key</label>
+        <input id="login-key" name="key" type="password" autocomplete="current-password" required>
+        <p id="login-error" class="error" role="alert" hidden></p>
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <div id="app" hidden>
+      <section class="card">
+        <h2>Trip details</h2>
+        <form id="trip-form">
+          <label for="trip-name">Name</label>
+          <input id="trip-name" name="name" type="text">
+          <div class="row">
+            <div>
+              <label for="trip-start">Start date</label>
+              <input id="trip-start" name="start_date" type="date">
+            </div>
+            <div>
+              <label for="trip-end">End date</label>
+              <input id="trip-end" name="end_date" type="date">
+            </div>
+          </div>
+          <label for="trip-tz">Timezone</label>
+          <input id="trip-tz" name="timezone" type="text" placeholder="e.g. Asia/Singapore">
+          <p id="trip-error" class="error" role="alert" hidden></p>
+          <p id="trip-ok" class="ok" role="status" hidden></p>
+          <button type="submit">Save trip</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2 id="item-form-title">Add item</h2>
+        <form id="item-form">
+          <div class="row">
+            <div>
+              <label for="item-date">Date</label>
+              <input id="item-date" name="date" type="date" required>
+            </div>
+            <div>
+              <label for="item-start">Start time</label>
+              <input id="item-start" name="start_time" type="time">
+            </div>
+            <div>
+              <label for="item-end">End time</label>
+              <input id="item-end" name="end_time" type="time">
+            </div>
+          </div>
+          <label for="item-title">Title</label>
+          <input id="item-title" name="title" type="text" required>
+          <label for="item-location">Location</label>
+          <input id="item-location" name="location" type="text">
+          <label for="item-notes">Notes</label>
+          <textarea id="item-notes" name="notes" rows="3"></textarea>
+          <label for="item-link">Link</label>
+          <input id="item-link" name="link" type="url" placeholder="https://">
+          <p id="item-error" class="error" role="alert" hidden></p>
+          <div class="actions">
+            <button type="submit" id="item-submit">Add item</button>
+            <button type="button" id="item-cancel" class="secondary" hidden>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Items</h2>
+        <p id="list-error" class="error" role="alert" hidden></p>
+        <div id="item-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>Recent changes</h2>
+        <p id="audit-error" class="error" role="alert" hidden></p>
+        <ol id="audit-list" class="audit"></ol>
+      </section>
+    </div>
+  </main>
+
+  <script src="common.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    var I = window.Itin;
+    var el = I.el;
+    var $ = function (id) { return document.getElementById(id); };
+
+    var OPTIONAL = ["start_time", "end_time", "location", "notes", "link"];
+    var itemInputs = {
+      date: $("item-date"), start_time: $("item-start"), end_time: $("item-end"),
+      title: $("item-title"), location: $("item-location"), notes: $("item-notes"), link: $("item-link")
+    };
+    var tripInputs = {
+      name: $("trip-name"), start_date: $("trip-start"), end_date: $("trip-end"), timezone: $("trip-tz")
+    };
+
+    var items = [];
+    var editingId = null;
+
+    function setStatus(text) {
+      $("status").textContent = text || "";
+      $("status").hidden = !text;
+    }
+
+    function handleAuthError(e, errorBox) {
+      if (e.status === 401) {
+        I.clearKey();
+        showLoginOnly("Your key was not accepted. Please sign in again.");
+        return true;
+      }
+      if (errorBox) I.showError(errorBox, e.message);
+      return false;
+    }
+
+    function showLoginOnly(message) {
+      $("app").hidden = true;
+      $("signed-in").hidden = true;
+      $("logout-button").hidden = true;
+      setStatus("");
+      I.showError($("page-error"), "");
+      I.showError($("login-error"), message || "");
+      I.showLogin(true);
+    }
+
+    function fillTripForm(trip) {
+      trip = trip || {};
+      Object.keys(tripInputs).forEach(function (k) {
+        tripInputs[k].value = trip[k] || "";
+      });
+    }
+
+    function renderItems() {
+      var box = $("item-list");
+      I.clear(box);
+      if (items.length === 0) {
+        box.appendChild(el("p", { class: "empty", text: "No items yet. Use the form above to add one." }));
+        return;
+      }
+      var currentDate = null;
+      var list = null;
+      items.forEach(function (item) {
+        if (item.date !== currentDate) {
+          currentDate = item.date;
+          list = el("ul", { class: "edit-items" });
+          box.appendChild(el("h3", { class: "day-heading", text: I.formatDay(item.date) }));
+          box.appendChild(list);
+        }
+        var info = el("div", { class: "edit-item-info" }, [
+          el("span", { class: "item-time", text: I.formatTimeRange(item.start_time, item.end_time) }),
+          " ",
+          el("strong", { text: item.title || "" }),
+          item.location ? el("span", { class: "muted", text: " · " + item.location }) : null
+        ]);
+        var editBtn = el("button", { type: "button", class: "secondary small", text: "Edit" });
+        editBtn.addEventListener("click", function () { startEdit(item); });
+        var delBtn = el("button", { type: "button", class: "danger small", text: "Delete" });
+        delBtn.addEventListener("click", function () { deleteItem(item, delBtn); });
+        list.appendChild(el("li", { class: "edit-item" + (item.id === editingId ? " editing" : "") }, [
+          info,
+          el("div", { class: "edit-item-actions" }, [editBtn, delBtn])
+        ]));
+      });
+    }
+
+    function actionLabel(action) {
+      return { create: "created", update: "updated", "delete": "deleted", update_trip: "updated trip" }[action] || action;
+    }
+
+    function renderAudit(entries) {
+      var list = $("audit-list");
+      I.clear(list);
+      if (!entries || entries.length === 0) {
+        list.appendChild(el("li", { class: "empty", text: "No changes yet." }));
+        return;
+      }
+      entries.forEach(function (en) {
+        var snap = en.after || en.before || {};
+        var subject;
+        if (en.action === "update_trip") subject = snap.name ? "“" + snap.name + "”" : "";
+        else subject = (snap.title ? "“" + snap.title + "”" : "") + (en.item_id != null ? " (#" + en.item_id + ")" : "");
+        list.appendChild(el("li", {}, [
+          el("span", { class: "audit-time muted", text: I.formatTimestamp(en.ts) }),
+          " ",
+          el("strong", { text: en.actor || "unknown" }),
+          " " + actionLabel(en.action) + (subject ? " " + subject : "")
+        ]));
+      });
+    }
+
+    async function loadItems() {
+      var data = await I.api("GET", "/api/itinerary");
+      items = (data && data.items) || [];
+      renderItems();
+      return data;
+    }
+
+    async function loadAudit() {
+      try {
+        var data = await I.api("GET", "/api/audit?limit=50");
+        I.showError($("audit-error"), "");
+        renderAudit(data && data.entries);
+      } catch (e) {
+        handleAuthError(e, $("audit-error"));
+      }
+    }
+
+    // Reload items and recent changes after a change.
+    async function refresh() {
+      try {
+        I.showError($("list-error"), "");
+        await loadItems();
+      } catch (e) {
+        if (handleAuthError(e, $("list-error"))) return;
+      }
+      await loadAudit();
+    }
+
+    async function start() {
+      if (!I.getKey()) { showLoginOnly(""); return; }
+      setStatus("Loading...");
+      I.showError($("page-error"), "");
+      try {
+        var results = await Promise.all([I.api("GET", "/api/whoami"), loadItems()]);
+        $("signed-in").textContent = "Signed in as " + (results[0] && results[0].name ? results[0].name : "");
+        $("signed-in").hidden = false;
+        $("logout-button").hidden = false;
+        fillTripForm(results[1] && results[1].trip);
+        resetItemForm();
+        setStatus("");
+        I.showLogin(false);
+        $("app").hidden = false;
+        await loadAudit();
+      } catch (e) {
+        if (!handleAuthError(e, null)) {
+          setStatus("");
+          I.showError($("page-error"), e.message);
+        }
+      }
+    }
+
+    // Trip form
+    $("trip-form").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var btn = this.querySelector("button[type=submit]");
+      var body = {};
+      Object.keys(tripInputs).forEach(function (k) { body[k] = tripInputs[k].value.trim(); });
+      I.showError($("trip-error"), "");
+      $("trip-ok").hidden = true;
+      btn.disabled = true;
+      try {
+        var trip = await I.api("PUT", "/api/trip", body);
+        fillTripForm(trip);
+        $("trip-ok").textContent = "Trip saved.";
+        $("trip-ok").hidden = false;
+        await loadAudit();
+      } catch (e) {
+        handleAuthError(e, $("trip-error"));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Item form
+    function resetItemForm() {
+      editingId = null;
+      $("item-form").reset();
+      $("item-form-title").textContent = "Add item";
+      $("item-submit").textContent = "Add item";
+      $("item-cancel").hidden = true;
+      I.showError($("item-error"), "");
+      renderItems();
+    }
+
+    function startEdit(item) {
+      editingId = item.id;
+      Object.keys(itemInputs).forEach(function (k) {
+        itemInputs[k].value = item[k] == null ? "" : item[k];
+      });
+      $("item-form-title").textContent = "Editing item #" + item.id;
+      $("item-submit").textContent = "Save changes";
+      $("item-cancel").hidden = false;
+      I.showError($("item-error"), "");
+      renderItems();
+      $("item-form").scrollIntoView({ behavior: "smooth", block: "start" });
+      itemInputs.title.focus({ preventScroll: true });
+    }
+
+    $("item-cancel").addEventListener("click", resetItemForm);
+
+    $("item-form").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var btn = $("item-submit");
+      var body = { date: itemInputs.date.value, title: itemInputs.title.value.trim() };
+      OPTIONAL.forEach(function (k) {
+        var v = itemInputs[k].value.trim();
+        // On edit, "" clears the field. On create, leave empty fields out.
+        if (editingId !== null || v !== "") body[k] = v;
+      });
+      I.showError($("item-error"), "");
+      btn.disabled = true;
+      try {
+        if (editingId !== null) await I.api("PUT", "/api/items/" + encodeURIComponent(editingId), body);
+        else await I.api("POST", "/api/items", body);
+        resetItemForm();
+        await refresh();
+      } catch (e) {
+        handleAuthError(e, $("item-error"));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    async function deleteItem(item, btn) {
+      if (!confirm("Delete \"" + (item.title || "this item") + "\" on " + I.formatDay(item.date) + "?")) return;
+      I.showError($("list-error"), "");
+      btn.disabled = true;
+      try {
+        await I.api("DELETE", "/api/items/" + encodeURIComponent(item.id));
+        if (editingId === item.id) resetItemForm();
+        await refresh();
+      } catch (e) {
+        btn.disabled = false;
+        handleAuthError(e, $("list-error"));
+      }
+    }
+
+    $("logout-button").addEventListener("click", function () {
+      I.clearKey();
+      resetItemForm();
+      showLoginOnly("");
+    });
+
+    I.setupLogin(function () { start(); });
+    start();
+  })();
+  </script>
+</body>
+</html>
