@@ -1,0 +1,22 @@
+name = "itinerary"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Always send API requests to the Worker, even if a file with a matching
+# path exists in ./public.
+run_worker_first = ["/api", "/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "itinerary-db"
+# Run `npx wrangler d1 create itinerary-db` and paste the database_id it prints here.
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+# "false" (default): viewing the itinerary requires a key.
+# "true": anyone can view GET /api/itinerary without a key.
+# Writes and the audit log always require a key, whatever this is set to.
+VIEW_PUBLIC = "false"
