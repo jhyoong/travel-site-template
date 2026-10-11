@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs the API integration tests end to end:
+# Runs the unit tests, then the API integration tests end to end:
+#   0. runs the date helper unit tests (test/dates.test.mjs)
 #   1. generates random test keys into a temporary env file
 #   2. resets a separate local D1 (.wrangler/test-state) and applies schema.sql
 #   3. starts `wrangler dev` on a free port and runs test/api.test.mjs
@@ -47,6 +48,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+echo "==> Running unit tests"
+node --test --test-reporter=spec test/dates.test.mjs
 KEYS_JSON="{\"alice\":\"$(rand_key)\",\"bob\":\"$(rand_key)\"}"
 printf 'API_KEYS=%s\n' "$KEYS_JSON" > "$ENV_FILE"
 
