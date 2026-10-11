@@ -66,6 +66,8 @@ export function renderTripForm(container, opts) {
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     showError(error, "");
+    if (!nameIn.value.trim()) { showError(error, "Please enter a trip name."); return; }
+    if (!tzIn.value.trim()) { showError(error, "Please choose a timezone."); return; }
     submit.disabled = true;
     try {
       const saved = await api("PUT", "/api/trip", {

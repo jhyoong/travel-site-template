@@ -23,6 +23,7 @@ export function initHistory(opts) {
   dialog.querySelector('[data-action="close"]').addEventListener("click", () => dialog.close());
 
   function render(entries) {
+    clear(list);
     if (!entries || entries.length === 0) {
       list.appendChild(el("li", { class: "empty", text: "No changes yet." }));
       return;

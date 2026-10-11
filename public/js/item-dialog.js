@@ -61,7 +61,11 @@ export function initItemDialog(opts) {
       await action();
     } catch (e) {
       if (e.status === 401) { dialog.close(); opts.onAuthFailed(); }
-      else showError(error, e.message);
+      else {
+        showError(error, e.message);
+        deleteBtn.textContent = "Delete";
+        deleteBtn.dataset.confirm = "";
+      }
     } finally {
       setBusy(false);
     }
@@ -98,6 +102,9 @@ export function initItemDialog(opts) {
       opts.onDeleted();
     });
   });
+
+  // Don't let Esc close the dialog while a save or delete is running.
+  dialog.addEventListener("cancel", (ev) => { if (busy) ev.preventDefault(); });
 
   form.querySelector('[data-action="cancel"]').addEventListener("click", () => dialog.close());
 
