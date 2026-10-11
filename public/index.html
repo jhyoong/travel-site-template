@@ -5,168 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Itinerary</title>
   <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./">Itinerary</a>
-    <div id="user-bar" class="user-bar" hidden>
-      <span id="signed-in"></span>
-      <a id="edit-link" href="edit.html" hidden>Edit</a>
-      <button type="button" id="signin-button" class="secondary" hidden>Sign in</button>
-      <button type="button" id="logout-button" class="secondary" hidden>Log out</button>
+    <span class="brand">Itinerary</span>
+    <div class="user-bar">
+      <span id="signed-in" class="muted" hidden></span>
+      <button type="button" id="history-button" class="ghost" hidden>History</button>
+      <button type="button" id="signin-button" class="ghost" hidden>Sign in to edit</button>
+      <button type="button" id="logout-button" class="ghost" hidden>Log out</button>
     </div>
   </header>
 
   <main>
-    <p id="status" class="status">Loading...</p>
     <p id="page-error" class="error" role="alert" hidden></p>
+    <p id="status" class="status">Loading...</p>
 
-    <section id="login-section" class="card" hidden>
-      <h2>Sign in</h2>
-      <form id="login-form">
-        <label for="login-key">Your key</label>
-        <input id="login-key" name="key" type="password" autocomplete="current-password" required>
-        <p id="login-error" class="error" role="alert" hidden></p>
-        <button type="submit">Sign in</button>
+    <section id="signin-section" class="card narrow" hidden>
+      <h1>Sign in</h1>
+      <p class="muted">Enter the key you were given.</p>
+      <form id="signin-form">
+        <label class="field">
+          <span>Your key</span>
+          <input id="signin-key" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="signin-error" class="error" role="alert" hidden></p>
+        <div class="actions"><button type="submit">Sign in</button></div>
       </form>
+    </section>
+
+    <section id="setup-section" class="card narrow" hidden>
+      <h1>Set up your trip</h1>
+      <p class="muted">You can change these later.</p>
+      <div id="setup-form"></div>
     </section>
 
     <section id="trip-section" hidden>
       <div class="trip-header">
-        <h1 id="trip-name"></h1>
-        <p id="trip-meta" class="muted"></p>
+        <div>
+          <h1 id="trip-name"></h1>
+          <p id="trip-meta" class="muted"></p>
+        </div>
+        <button type="button" id="edit-trip-button" class="secondary" hidden>Edit trip</button>
       </div>
       <div id="days"></div>
     </section>
   </main>
 
-  <script src="common.js"></script>
-  <script>
-  (function () {
-    "use strict";
-    var I = window.Itin;
-    var el = I.el;
+  <dialog id="item-dialog" class="sheet" aria-labelledby="item-dialog-title">
+    <form id="item-form">
+      <h2 id="item-dialog-title">Add event</h2>
+      <p class="ok" role="status" hidden></p>
+      <label class="field">
+        <span>Title</span>
+        <input name="title" type="text" required maxlength="200" autocomplete="off">
+      </label>
+      <div class="row">
+        <label class="field"><span>Start time</span><input name="start_time" type="time"></label>
+        <label class="field"><span>End time</span><input name="end_time" type="time"></label>
+      </div>
+      <label class="field"><span>Location</span><input name="location" type="text" maxlength="300"></label>
+      <label class="field"><span>Notes</span><textarea name="notes" rows="3" maxlength="5000"></textarea></label>
+      <label class="field"><span>Link</span><input name="link" type="url" placeholder="https://"></label>
+      <label class="field"><span>Date</span><input name="date" type="date" required></label>
+      <p class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="submit" value="save">Save</button>
+        <button type="submit" value="another" class="secondary">Save and add another</button>
+        <button type="button" class="secondary" data-action="cancel">Cancel</button>
+        <button type="button" class="danger" data-action="delete">Delete</button>
+      </div>
+    </form>
+  </dialog>
 
-    var statusEl = document.getElementById("status");
-    var pageError = document.getElementById("page-error");
-    var userBar = document.getElementById("user-bar");
-    var signedIn = document.getElementById("signed-in");
-    var editLink = document.getElementById("edit-link");
-    var signinButton = document.getElementById("signin-button");
-    var logoutButton = document.getElementById("logout-button");
-    var tripSection = document.getElementById("trip-section");
+  <dialog id="trip-dialog" class="sheet" aria-labelledby="trip-dialog-title">
+    <h2 id="trip-dialog-title">Edit trip</h2>
+    <div id="trip-dialog-form"></div>
+  </dialog>
 
-    function setStatus(text) {
-      statusEl.textContent = text || "";
-      statusEl.hidden = !text;
-    }
-
-    function showUser(name) {
-      userBar.hidden = false;
-      signedIn.textContent = name ? "Signed in as " + name : "";
-      signedIn.hidden = !name;
-      editLink.hidden = !name;
-      logoutButton.hidden = !name;
-      signinButton.hidden = !!name;
-    }
-
-    function renderTrip(data) {
-      var trip = (data && data.trip) || {};
-      var items = (data && data.items) || [];
-      document.getElementById("trip-name").textContent = trip.name || "Untitled trip";
-      document.title = (trip.name || "Itinerary") + " - Itinerary";
-      var meta = [];
-      var range = I.formatDateRange(trip.start_date, trip.end_date);
-      if (range) meta.push(range);
-      if (trip.timezone) meta.push("Times in " + trip.timezone);
-      document.getElementById("trip-meta").textContent = meta.join(" · ");
-
-      var days = document.getElementById("days");
-      I.clear(days);
-      if (items.length === 0) {
-        days.appendChild(el("p", { class: "empty", text: "No items yet. Add some on the edit page." }));
-      } else {
-        var currentDate = null;
-        var list = null;
-        items.forEach(function (item) {
-          if (item.date !== currentDate) {
-            currentDate = item.date;
-            list = el("ol", { class: "items" });
-            days.appendChild(el("section", { class: "day" }, [
-              el("h2", { class: "day-heading", text: I.formatDay(item.date) }),
-              list
-            ]));
-          }
-          list.appendChild(renderItem(item));
-        });
-      }
-      tripSection.hidden = false;
-    }
-
-    function renderItem(item) {
-      var body = [el("h3", { class: "item-title", text: item.title || "" })];
-      if (item.location) body.push(el("p", { class: "item-location", text: item.location }));
-      if (item.notes) body.push(el("p", { class: "item-notes", text: item.notes }));
-      var href = I.safeHref(item.link);
-      if (href) {
-        body.push(el("p", { class: "item-link" }, [
-          el("a", { href: href, target: "_blank", rel: "noopener noreferrer", text: href })
-        ]));
-      } else if (item.link) {
-        body.push(el("p", { class: "item-link muted", text: item.link }));
-      }
-      return el("li", { class: "item" }, [
-        el("div", { class: "item-time", text: I.formatTimeRange(item.start_time, item.end_time) }),
-        el("div", { class: "item-body" }, body)
-      ]);
-    }
-
-    function showLoginOnly(message) {
-      tripSection.hidden = true;
-      userBar.hidden = true;
-      setStatus("");
-      I.showError(pageError, "");
-      I.showError(document.getElementById("login-error"), message || "");
-      I.showLogin(true);
-    }
-
-    async function load() {
-      setStatus("Loading...");
-      I.showError(pageError, "");
-      var key = I.getKey();
-      try {
-        var results = await Promise.all([
-          I.api("GET", "/api/itinerary", undefined, key ? {} : { noKey: true }),
-          key ? I.api("GET", "/api/whoami") : Promise.resolve(null)
-        ]);
-        setStatus("");
-        I.showLogin(false);
-        showUser(results[1] ? results[1].name : "");
-        renderTrip(results[0]);
-      } catch (e) {
-        if (e.status === 401) {
-          if (key) I.clearKey();
-          showLoginOnly(key ? "Your saved key was not accepted. Please sign in again." : "");
-        } else {
-          setStatus("");
-          I.showError(pageError, e.message);
-        }
-      }
-    }
-
-    I.setupLogin(function () { load(); });
-
-    logoutButton.addEventListener("click", function () {
-      I.clearKey();
-      showLoginOnly("");
-    });
-    signinButton.addEventListener("click", function () {
-      I.showError(document.getElementById("login-error"), "");
-      I.showLogin(true);
-    });
-
-    load();
-  })();
-  </script>
+  <dialog id="history-dialog" class="panel" aria-labelledby="history-title">
+    <div class="panel-header">
+      <h2 id="history-title">History</h2>
+      <button type="button" class="secondary" data-action="close">Close</button>
+    </div>
+    <p class="status" hidden></p>
+    <p class="error" role="alert" hidden></p>
+    <ol class="audit"></ol>
+  </dialog>
 </body>
 </html>
