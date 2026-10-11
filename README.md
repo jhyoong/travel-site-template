@@ -3,7 +3,7 @@
 A private, single-trip itinerary site that runs on Cloudflare's free tier.
 Fork it once per trip.
 
-- People edit the trip through a simple web form (`/edit`).
+- People view and edit the trip on one page. Signed-in users add events from each day and click an event to edit it.
 - Agents use a REST API (plain-text docs at `GET /api`).
 - Every reader and writer uses a named key. Every change is logged with the key's name.
 - Private by default: viewing and editing both need a key.
@@ -43,6 +43,8 @@ You need Node.js and a Cloudflare account. All commands use `npx wrangler`, so y
    ```
 
 Open the URL it prints and sign in with one of your keys.
+
+The first time you sign in, you'll be asked for the trip name, dates and timezone.
 
 ## Keys
 
@@ -85,16 +87,29 @@ Open http://localhost:8787.
 bash test/run.sh
 ```
 
-This uses its own throwaway local database and random keys. It starts `wrangler dev`, runs the API tests in `test/api.test.mjs`, then runs them again with `VIEW_PUBLIC=true`.
+This first runs the date helper unit tests in `test/dates.test.mjs`. It then uses its own throwaway local database and random keys, starts `wrangler dev`, runs the API tests in `test/api.test.mjs`, and runs them again with `VIEW_PUBLIC=true`.
+
+To run only the unit tests: `node --test test/dates.test.mjs`.
+
+The page itself has no automated tests. Use the manual checklist in `docs/plans/2026-10-11-frontend-redesign-design.md`.
 
 Do not point `test/api.test.mjs` at a real deployment. It overwrites the trip details.
 
 ## Files
 
 ```
-src/worker.js      routing, auth, API, validation, audit log
-public/            index.html (view), edit.html (edit), common.js, style.css
-schema.sql         D1 tables: trip, items, audit_log
-wrangler.toml      Worker, assets, D1 binding, VIEW_PUBLIC
-test/              API integration tests
+src/worker.js         routing, auth, API, validation, audit log
+public/index.html     the only page: sign in, setup, itinerary, dialogs
+public/edit.html      redirect to / (old link)
+public/js/app.js      page startup and state
+public/js/api.js      key storage, API calls, DOM helpers
+public/js/dates.js    date helpers and day grouping
+public/js/timeline.js day list
+public/js/setup.js    trip form (setup and edit trip)
+public/js/item-dialog.js  add/edit event dialog
+public/js/history.js  recent changes panel
+public/style.css      styles
+schema.sql            D1 tables: trip, items, audit_log
+wrangler.toml         Worker, assets, D1 binding, VIEW_PUBLIC
+test/                 unit tests and API integration tests
 ```
