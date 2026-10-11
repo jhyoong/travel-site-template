@@ -13,6 +13,7 @@ const STATES = ["status", "signin-section", "setup-section", "trip-section"];
 let user = "";   // signed-in key name; "" when signed out or read-only
 let data = null; // last { trip, items } from GET /api/itinerary
 let loadSeq = 0; // ignores results from loads that are no longer current
+let canViewPublic = false; // true once the itinerary loaded without a key (VIEW_PUBLIC on)
 
 const itemDialog = initItemDialog({
   onSaved: (id) => load(id),
@@ -50,6 +51,7 @@ function showSignIn(message) {
   renderTopbar();
   showError($("page-error"), "");
   showError($("signin-error"), message || "");
+  $("signin-back").hidden = !canViewPublic;
   show("signin-section");
   $("signin-key").focus();
 }
@@ -103,6 +105,7 @@ async function load(highlightId) {
     ]);
     if (seq !== loadSeq) return;
     data = itinerary;
+    if (!key) canViewPublic = true;
     if (who) user = who.name || "";
     renderTopbar();
     if (user && !isSetUp(data.trip)) showSetup();
@@ -111,7 +114,7 @@ async function load(highlightId) {
     if (seq !== loadSeq) return;
     if (e.status === 401) {
       if (key) authFailed();
-      else showSignIn("");
+      else { canViewPublic = false; showSignIn(""); }
     } else {
       $("status").hidden = true;
       renderTopbar();
@@ -142,8 +145,14 @@ $("signin-form").addEventListener("submit", async (ev) => {
 });
 
 $("signin-button").addEventListener("click", () => showSignIn(""));
+$("signin-back").addEventListener("click", () => load());
 $("logout-button").addEventListener("click", () => { clearKey(); user = ""; data = null; renderTopbar(); load(); });
 $("history-button").addEventListener("click", () => historyPanel.open());
+// Don't let Esc close the trip dialog while a save is in progress,
+// or a failed save's error would be lost.
+$("trip-dialog").addEventListener("cancel", (ev) => {
+  if ($("trip-dialog").querySelector("button[type=submit]:disabled")) ev.preventDefault();
+});
 $("edit-trip-button").addEventListener("click", () => {
   const dialog = $("trip-dialog");
   renderTripForm($("trip-dialog-form"), {

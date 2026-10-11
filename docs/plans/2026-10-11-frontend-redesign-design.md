@@ -22,7 +22,7 @@
 ## Page states
 `index.html` shows one of four states, based on the key and the trip data:
 
-1. **Sign in.** No key is stored, or the stored key was rejected. This is a centered card with the key input. If `VIEW_PUBLIC=true` and there is no key, skip to state 4 as read-only, with a "Sign in to edit" link in the top bar.
+1. **Sign in.** No key is stored, or the stored key was rejected. This is a centered card with the key input. If `VIEW_PUBLIC=true` and there is no key, skip to state 4 as read-only, with a "Sign in to edit" link in the top bar. In that case the sign-in card also has a **Back to itinerary** button.
 2. **Setup.** Signed in, and the trip has no name or no dates. A centered card with:
    - Trip name
    - Start date and end date (the end date can't be before the start date)
@@ -47,7 +47,7 @@ Everything stays on one URL, so there is no client-side routing.
 
 ## Adding and editing (signed in only)
 - Each day ends with a **+ Add** button. It opens the item dialog with the date set and the cursor in the title field.
-- Click or tap an item to edit it in the same dialog. Rows have no separate Edit or Delete buttons.
+- Items show the time, title and location. Click or tap an item to expand it and show its notes, link and an **Edit** button. **Edit** opens the same dialog, filled in. A just-saved item is shown expanded.
 - Dialog fields, in order: title, start time, end time, then location, notes, link and date. The date field lets you move an item to another day.
 - Dialog buttons:
   - **Save**. Pressing Enter in a single-line field also saves.
@@ -96,13 +96,14 @@ public/style.css         rewritten
   - [ ] "+ Add" opens the dialog with the correct date and the cursor in the title
   - [ ] Enter saves; Esc cancels
   - [ ] "Save and add another" keeps the dialog open with the same date
-  - [ ] Clicking an item opens it for editing; changing the date moves it
+  - [ ] Clicking an item expands it (notes, link, Edit); clicking again collapses it
+  - [ ] Edit opens the item in the dialog; changing the date moves it
   - [ ] Delete needs a second click to confirm
   - [ ] An API validation error (e.g. end time before start time) shows in the dialog and keeps the input
   - [ ] Items outside the trip dates show with the "Outside trip dates" label
   - [ ] Edit trip updates the header and the day range
   - [ ] History panel lists recent changes
-  - [ ] `VIEW_PUBLIC=true` with no key: read-only view, no edit controls, "Sign in to edit" works
+  - [ ] `VIEW_PUBLIC=true` with no key: read-only view, no edit controls, "Sign in to edit" works, and "Back to itinerary" returns to the read-only view
   - [ ] Revoked key mid-session returns to sign-in
   - [ ] `/edit.html` redirects to `/`
   - [ ] Dark mode looks correct

@@ -4,6 +4,8 @@ import { el, clear, safeHref } from "./api.js";
 import { buildDays, formatDay, formatTimeRange } from "./dates.js";
 
 // opts: { canEdit, onAdd(date), onEdit(item), highlightId }
+// Items show time, title and location. Clicking one expands it to show
+// notes, link and (for signed-in users) an Edit button.
 export function renderTimeline(container, trip, items, opts) {
   clear(container);
   const days = buildDays(trip, items);
@@ -43,38 +45,50 @@ function renderDay(day, opts) {
 }
 
 function renderItem(item, opts) {
-  const card = [el("h3", { class: "item-title", text: item.title || "" })];
-  if (item.location) card.push(el("p", { class: "item-location", text: item.location }));
-  if (item.notes) card.push(el("p", { class: "item-notes", text: item.notes }));
+  const details = [];
+  if (item.notes) details.push(el("p", { class: "item-notes", text: item.notes }));
   const href = safeHref(item.link);
   if (href) {
-    card.push(el("p", { class: "item-link" }, [
+    details.push(el("p", { class: "item-link" }, [
       el("a", { href, target: "_blank", rel: "noopener noreferrer", text: href })
     ]));
   }
-  const li = el("li", {
-    class: "item" + (item.id === opts.highlightId ? " highlight" : ""),
-    "data-id": item.id
-  }, [
-    el("div", { class: "item-time", text: formatTimeRange(item.start_time, item.end_time) }),
-    el("div", { class: "item-card" }, card)
-  ]);
   if (opts.canEdit) {
-    // The whole row opens the editor. Clicks on the item's link still
-    // open the link. Keyboard users can Tab to the row and press Enter.
-    li.classList.add("editable");
-    li.tabIndex = 0;
-    li.title = "Click to edit";
-    li.addEventListener("click", (ev) => {
-      if (ev.target.closest("a")) return;
-      opts.onEdit(item);
-    });
-    li.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && ev.target === li) {
-        ev.preventDefault();
-        opts.onEdit(item);
-      }
-    });
+    details.push(el("div", { class: "item-actions" }, [
+      el("button", { type: "button", class: "secondary", text: "Edit", onclick: () => opts.onEdit(item) })
+    ]));
   }
+  const summary = [
+    el("span", { class: "item-title", text: item.title || "" }),
+    item.location ? el("span", { class: "item-location", text: item.location }) : null
+  ];
+  const time = el("div", { class: "item-time", text: formatTimeRange(item.start_time, item.end_time) });
+  const highlight = item.id === opts.highlightId;
+  const li = el("li", { class: "item" + (highlight ? " highlight" : ""), "data-id": item.id });
+
+  // Nothing to expand: a plain card with time, title and location.
+  if (details.length === 0) {
+    li.append(time, el("div", { class: "item-card" }, [el("div", { class: "item-summary" }, summary)]));
+    return li;
+  }
+
+  // Clicking anywhere on the row (except inside the details) expands it to
+  // show notes, link and the Edit button. The summary is a real button, so
+  // keyboard and screen reader users get the same toggle.
+  const toggle = el("button", { type: "button", class: "item-summary" }, summary);
+  const panel = el("div", { class: "item-details" }, details);
+  function setOpen(open) {
+    toggle.setAttribute("aria-expanded", String(open));
+    panel.hidden = !open;
+    li.classList.toggle("expanded", open);
+  }
+  li.classList.add("expandable");
+  li.append(time, el("div", { class: "item-card" }, [toggle, panel]));
+  li.addEventListener("click", (ev) => {
+    if (ev.target.closest(".item-details")) return;
+    setOpen(panel.hidden);
+  });
+  // A just-saved item opens expanded so its changes are visible.
+  setOpen(highlight);
   return li;
 }

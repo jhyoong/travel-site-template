@@ -76,12 +76,13 @@ export function renderTripForm(container, opts) {
         end_date: endIn.value,
         timezone: tzIn.value.trim()
       });
+      // Leave the button disabled: the form is replaced once the page reloads,
+      // and a second click would only save the same trip again.
       opts.onSaved(saved);
     } catch (e) {
+      submit.disabled = false;
       if (e.status === 401) opts.onAuthFailed();
       else showError(error, e.message);
-    } finally {
-      submit.disabled = false;
     }
   });
 

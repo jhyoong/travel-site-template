@@ -110,7 +110,7 @@ button.danger { background: transparent; color: var(--danger); border-color: var
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-.item.editable:focus-visible {
+.item-summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -253,14 +253,51 @@ textarea { resize: vertical; }
   overflow-wrap: anywhere;
 }
 
-.item-title { font-size: 1rem; }
+.item-title { display: block; font-size: 1rem; font-weight: 600; }
+.item-location { display: block; }
 .item-location, .item-notes, .item-link { margin: 0.2rem 0 0; font-size: 0.925rem; }
 .item-location { color: var(--muted); }
 .item-notes { white-space: pre-wrap; }
 .item-link a { word-break: break-all; }
 
-.item.editable { cursor: pointer; border-radius: var(--radius); }
-.item.editable:hover .item-card { border-color: var(--accent); }
+/* The summary is a button only when the item can expand; reset its look. */
+button.item-summary {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0 1.5rem 0 0;
+  position: relative;
+  text-align: left;
+  font-weight: normal;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+/* Chevron: points down when collapsed, up when expanded. */
+button.item-summary::after {
+  content: "";
+  position: absolute;
+  right: 0.25rem;
+  top: 0.35rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+}
+.item.expanded button.item-summary::after { top: 0.6rem; transform: rotate(-135deg); }
+
+.item.expandable { cursor: pointer; }
+.item.expandable:hover .item-card { border-color: var(--accent); }
+
+.item-details {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  cursor: default;
+}
+.item-actions { margin-top: 0.6rem; }
 
 .item.highlight .item-card { animation: flash 2s ease-out; }
 @keyframes flash {
