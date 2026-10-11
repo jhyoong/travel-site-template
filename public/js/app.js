@@ -12,13 +12,14 @@ const STATES = ["status", "signin-section", "setup-section", "trip-section"];
 
 let user = "";   // signed-in key name; "" when signed out or read-only
 let data = null; // last { trip, items } from GET /api/itinerary
+let loadSeq = 0; // ignores results from loads that are no longer current
 
 const itemDialog = initItemDialog({
   onSaved: (id) => load(id),
   onDeleted: () => load(),
   onAuthFailed: authFailed
 });
-const history = initHistory({ onAuthFailed: authFailed });
+const historyPanel = initHistory({ onAuthFailed: authFailed });
 
 function show(id) {
   STATES.forEach((s) => { $(s).hidden = s !== id; });
@@ -43,9 +44,11 @@ function renderTopbar() {
 }
 
 function showSignIn(message) {
+  loadSeq++;
   user = "";
   data = null;
   renderTopbar();
+  showError($("page-error"), "");
   showError($("signin-error"), message || "");
   show("signin-section");
   $("signin-key").focus();
@@ -89,6 +92,7 @@ function renderTrip(highlightId) {
 // Fetches the itinerary (and the key name on first load) and shows the
 // right state. highlightId briefly highlights a just-saved item.
 async function load(highlightId) {
+  const seq = ++loadSeq;
   const key = getKey();
   if (!data) setStatus("Loading...");
   showError($("page-error"), "");
@@ -97,18 +101,21 @@ async function load(highlightId) {
       api("GET", "/api/itinerary", undefined, key ? {} : { noKey: true }),
       key && !user ? api("GET", "/api/whoami") : null
     ]);
+    if (seq !== loadSeq) return;
     data = itinerary;
     if (who) user = who.name || "";
     renderTopbar();
     if (user && !isSetUp(data.trip)) showSetup();
     else renderTrip(highlightId);
   } catch (e) {
+    if (seq !== loadSeq) return;
     if (e.status === 401) {
       if (key) authFailed();
       else showSignIn("");
     } else {
       $("status").hidden = true;
-      showError($("page-error"), e.message);
+      renderTopbar();
+      showError($("page-error"), data ? e.message : e.message + " Reload the page to try again.");
     }
   }
 }
@@ -135,8 +142,8 @@ $("signin-form").addEventListener("submit", async (ev) => {
 });
 
 $("signin-button").addEventListener("click", () => showSignIn(""));
-$("logout-button").addEventListener("click", () => { clearKey(); showSignIn(""); });
-$("history-button").addEventListener("click", () => history.open());
+$("logout-button").addEventListener("click", () => { clearKey(); user = ""; data = null; renderTopbar(); load(); });
+$("history-button").addEventListener("click", () => historyPanel.open());
 $("edit-trip-button").addEventListener("click", () => {
   const dialog = $("trip-dialog");
   renderTripForm($("trip-dialog-form"), {
