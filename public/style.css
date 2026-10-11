@@ -40,7 +40,7 @@
 
 * { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 3.5rem; }
 
 body {
   margin: 0;
@@ -249,6 +249,8 @@ textarea { resize: vertical; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.75rem 1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .item-title { font-size: 1rem; }
@@ -288,6 +290,7 @@ dialog {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 10px 40px rgb(0 0 0 / 0.25);
+  overscroll-behavior: contain;
 }
 dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 dialog h2 { font-size: 1.25rem; margin-bottom: 1rem; }
@@ -312,7 +315,7 @@ dialog.panel {
 .panel-header h2 { margin: 0; }
 
 .audit { list-style: none; margin: 0; padding: 0; }
-.audit li { padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.925rem; }
+.audit li { padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.925rem; overflow-wrap: anywhere; }
 .audit-time { display: block; font-size: 0.8rem; }
 
 /* ---------- Phones ---------- */
@@ -348,5 +351,5 @@ dialog.panel {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; }
+  dialog.sheet { animation: none; }
 }
