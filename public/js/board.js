@@ -11,7 +11,8 @@ export function initBoard(ctx) {
   const boardEl = document.getElementById("board");
   const bdJump = document.getElementById("bd-jump");
   const menu = document.getElementById("menu");
-  let menuFor = null, dg = null, suppressClick = false;
+  let menuFor = null, dg = null, suppressClick = false, pendingRender = false;
+  menu.tabIndex = -1; // lets the menu take focus when none of its items are enabled
 
   const cols = () => [{ id: "ideas", color: "var(--idea)" }, ...ctx.model().days.map((d) => ({ ...d, id: d.date }))];
   const blocked = (id, to) => ctx.stopById(id).status === "booked" && to !== ctx.colOf(id);
@@ -59,6 +60,8 @@ export function initBoard(ctx) {
   }
 
   function render() {
+    if (dg && dg.active) { pendingRender = true; return; }
+    closeMenu(false);
     const canEdit = ctx.canEdit(), landed = ctx.takeLanded();
     const left = boardEl.scrollLeft;
     const input = document.getElementById("addin");
@@ -105,6 +108,7 @@ export function initBoard(ctx) {
 
   /* drag with pointer events (mouse and touch) */
   boardEl.addEventListener("pointerdown", (e) => {
+    if (dg) return;
     const g = e.target.closest(".grip");
     if (!g || e.button > 0) return;
     const card = g.closest(".bc"), r = card.getBoundingClientRect();
@@ -113,6 +117,7 @@ export function initBoard(ctx) {
   });
   boardEl.addEventListener("pointermove", (e) => {
     if (!dg || e.pointerId !== dg.pid) return;
+    if (!dg.active && e.pointerType === "mouse" && !e.buttons) { dg = null; return; } // button released outside the page
     dg.x = e.clientX; dg.y = e.clientY;
     if (!dg.active) { if (Math.hypot(dg.x - dg.sx, dg.y - dg.sy) < 6) return; startDrag(); }
     e.preventDefault();
@@ -174,14 +179,18 @@ export function initBoard(ctx) {
     document.body.classList.remove("dragging"); boardEl.classList.remove("dragging");
     const el = document.elementFromPoint(d.x, d.y), over = el && el.closest(".col");
     const overBlocked = over && over.classList.contains("no-drop");
-    const to = d.ph.closest(".col").dataset.col;
-    const idx = [...d.ph.parentNode.children].filter((n) => n === d.ph || (n.classList.contains("bc") && !n.classList.contains("is-src"))).indexOf(d.ph);
-    if (!commit) { render(); return; }
+    const toCol = d.ph.closest(".col");
+    pendingRender = false;
+    if (!commit || !over || !toCol) { render(); return; }
     if (overBlocked) {
       render();
       toast(`${ctx.stopById(d.id).title} is booked for ${ctx.colLabel(ctx.colOf(d.id))}. Change its day in the edit dialog to move it.`);
       return;
     }
+    const to = toCol.dataset.col;
+    const idx = [...d.ph.parentNode.children].filter((n) => n === d.ph || (n.classList.contains("bc") && !n.classList.contains("is-src"))).indexOf(d.ph);
+    // Dropped back in its own slot: nothing to save, just restore the card.
+    if (to === ctx.colOf(d.id) && idx === indexIn(to, d.id)) { render(); return; }
     ctx.onMove(d.id, to, idx);
   }
 
@@ -198,6 +207,7 @@ export function initBoard(ctx) {
     if (!menu.hidden && menuFor === id) closeMenu(true); else openMenu(g);
   });
   function openMenu(grip) {
+    closeMenu(false);
     const id = Number(grip.closest(".bc").dataset.id), from = ctx.colOf(id), s = ctx.stopById(id);
     const i = indexIn(from, id), last = ctx.colStops(from).length - 1, isBooked = s.status === "booked";
     menu.innerHTML = `<p class="mt">${esc(s.title)}</p>
@@ -214,7 +224,7 @@ export function initBoard(ctx) {
     menu.style.left = (left + window.scrollX) + "px"; menu.style.top = (top + window.scrollY) + "px";
     grip.setAttribute("aria-expanded", "true");
     const first = menu.querySelector("button:not([disabled])");
-    if (first) first.focus();
+    (first || menu).focus();
   }
   function closeMenu(refocus) {
     if (menu.hidden) return;
@@ -241,10 +251,13 @@ export function initBoard(ctx) {
   });
   menu.addEventListener("keydown", (e) => {
     const items = [...menu.querySelectorAll("button:not([disabled])")], i = items.indexOf(document.activeElement);
-    if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
-    else if (e.key === "Escape") { e.preventDefault(); closeMenu(true); }
+    if (e.key === "Escape") { e.preventDefault(); closeMenu(true); }
     else if (e.key === "Tab") closeMenu(false);
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!items.length) return;
+      items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus();
+    }
   });
   document.addEventListener("pointerdown", (e) => { if (!menu.hidden && !menu.contains(e.target) && !e.target.closest(".grip")) closeMenu(false); });
   window.addEventListener("resize", () => closeMenu(false));
