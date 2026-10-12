@@ -65,5 +65,5 @@ export function toast(msg, undo) {
   }
   t.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.classList.remove("show"); t.innerHTML = ""; }, undo ? 6000 : 3500);
+  toastTimer = setTimeout(() => t.classList.remove("show"), undo ? 6000 : 3500);
 }

@@ -39,9 +39,9 @@ a{color:inherit}
 .warnline{display:flex;gap:8px;align-items:flex-start;margin:10px 0 0;padding:8px 10px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-size:13px;font-weight:500;line-height:1.4}
 .warnline .i{margin-top:1px}
 
-.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translate(-50%,16px);opacity:0;pointer-events:none;z-index:70;
-  display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100% - 32px);padding:8px 8px 8px 16px;min-height:48px;border-radius:12px;background:var(--ink);color:#fff;font-size:14px;transition:opacity .2s,transform .2s}
-.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translate(-50%,16px);opacity:0;visibility:hidden;pointer-events:none;z-index:70;
+  display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100% - 32px);padding:8px 8px 8px 16px;min-height:48px;border-radius:12px;background:var(--ink);color:#fff;font-size:14px;transition:opacity .2s,transform .2s,visibility 0s .2s}
+.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto;visibility:visible;transition-delay:0s}
 .toast button{flex:none;background:none;border:0;color:#fff;font-weight:700;text-decoration:underline;min-height:36px;padding:0 8px;cursor:pointer}
 
 /* ================= timeline view ================= */
