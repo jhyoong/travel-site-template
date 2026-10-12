@@ -21,6 +21,7 @@ Enter all data through the page. Don't seed the database.
 - [ ] "Add stop" on Day 1: create a few stops with different types, durations and a fixed start time. Times appear and follow on with travel legs.
 - [ ] Location box: "35.0089, 135.77" saves. A full Google Maps place URL saves. A `maps.app.goo.gl` link shows the short-link error. "Kyoto" shows the hint error.
 - [ ] Edit day: set a title, start time, and start/end place with locations. "Leave ..." and "Back at ..." legs appear.
+- [ ] With a 10-day trip, the day buttons keep their width and the row scrolls sideways with a thin scrollbar. Scrolling the page keeps the current day button in view.
 - [ ] A fixed time that can't be reached shows the red late note, the day warning and the chip's clash count.
 - [ ] Expand a card: notes, booking details, Maps link, link and Edit button show. Edit changes the stop. Delete needs two clicks.
 - [ ] Set a stop to Suggestion. "Add to plan" and "Move to ideas" work, and Undo reverts each.

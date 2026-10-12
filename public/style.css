@@ -221,8 +221,10 @@ body.dragging,body.dragging *{cursor:grabbing!important;user-select:none;-webkit
   .toast{bottom:24px}
   .tl-view{padding-bottom:96px}
   .tl-intro{flex-direction:row;align-items:center;justify-content:space-between;gap:16px}
-  .tl-nav{gap:10px;border-top:0}
-  .dchip{flex:1 1 0;min-width:0;display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:baseline;padding:10px 14px}
+  .tl-nav{gap:10px;border-top:0;scrollbar-width:thin;scrollbar-color:var(--line) transparent;scroll-padding-inline:var(--padx)}
+  .tl-nav::-webkit-scrollbar{display:block;height:6px}
+  .tl-nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+  .dchip{flex:1 0 150px;min-width:150px;display:grid;grid-template-columns:auto 1fr;column-gap:8px;align-items:baseline;padding:10px 14px}
   .dchip .n{font-size:13px}
   .dchip .dt{font-size:13px;font-weight:500;color:var(--ink-3)}
   .dchip{align-content:start}
