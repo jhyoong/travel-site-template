@@ -29,7 +29,7 @@ const ICON = {
 // Travel mode -> icon.
 export const LEG = { walk: "foot", taxi: "taxi", train: "train", any: "taxi" };
 
-export const ico = (k, s = 18) => `<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+export const ico = (k, s = 18) => `<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] ?? ""}</svg>`;
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const plural = (n, w, p) => `${n} ${n === 1 ? w : (p || w + "s")}`;
 export const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -60,10 +60,10 @@ export function toast(msg, undo) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = "Undo";
-    b.onclick = () => { undo(); t.classList.remove("show"); };
+    b.onclick = () => { t.innerHTML = ""; t.classList.remove("show"); undo(); };
     t.appendChild(b);
   }
   t.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), undo ? 6000 : 3500);
+  toastTimer = setTimeout(() => { t.classList.remove("show"); t.innerHTML = ""; }, undo ? 6000 : 3500);
 }
