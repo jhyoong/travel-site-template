@@ -31,7 +31,8 @@ export function travel(a, b) {
 }
 
 // day: { start_time, start_lat, start_lng, end_lat, end_lng }
-// stops: in order, each with duration_min, fixed_time, after_time, lat, lng.
+// stops: in order, each with duration_min, fixed_time, after_time, late_ok, lat, lng.
+// late_ok: the late warning was dismissed, so the stop is never marked late.
 // Returns { stops, start_leg, leave_at, back_leg, back_at, total_min, clashes }.
 // Each returned stop is a copy with start, end, leg, free_min and late_min added.
 export function schedule(day, stops) {
@@ -53,7 +54,7 @@ export function schedule(day, stops) {
     if (s.after_time) start = Math.max(start, toMin(s.after_time));
     if (s.fixed_time) {
       const f = toMin(s.fixed_time);
-      if (i > 0 && earliest > f) late = earliest - f;
+      if (i > 0 && earliest > f && !s.late_ok) late = earliest - f;
       start = f;
     }
     const free = i > 0 && !late ? Math.max(0, start - earliest) : 0;

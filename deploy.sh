@@ -106,6 +106,16 @@ fi
 echo "== Applying schema.sql"
 $WRANGLER d1 execute "$DB_NAME" --remote --file=schema.sql --yes
 
+# schema.sql does not add new columns to a table that already exists.
+HAS_LATE_OK="$($WRANGLER d1 execute "$DB_NAME" --remote --json --yes \
+  --command "SELECT COUNT(*) AS n FROM pragma_table_info('stops') WHERE name = 'late_ok'" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].results[0].n))')"
+if [ "$HAS_LATE_OK" = "0" ]; then
+  echo "== Adding the stops.late_ok column"
+  $WRANGLER d1 execute "$DB_NAME" --remote --yes \
+    --command "ALTER TABLE stops ADD COLUMN late_ok INTEGER NOT NULL DEFAULT 0 CHECK (late_ok IN (0, 1))"
+fi
+
 # 6. Deploy the Worker.
 echo "== Deploying"
 $WRANGLER deploy

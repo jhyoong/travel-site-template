@@ -141,6 +141,25 @@ function keepSuggestion(id) {
   });
 }
 
+// Hides the late warning on a stop (it happens at its fixed time anyway).
+function setLateOk(id, value) {
+  const s = stopById(id);
+  if (!s) return null;
+  s.late_ok = value;
+  recompute();
+  renderAll();
+  return send("PUT", `/api/stops/${id}`, { late_ok: value });
+}
+
+function dismissLate(id) {
+  const title = stopById(id).title;
+  const pending = setLateOk(id, true);
+  toast(`Hid the late warning for ${title}.`, async () => {
+    await pending;
+    if (model) setLateOk(id, false);
+  });
+}
+
 async function addIdea(title) {
   const created = await send("POST", "/api/stops", { title });
   if (!created) return;
@@ -173,6 +192,7 @@ const ctx = {
   onToIdeas: (id) => moveStop(id, "ideas", model.ideas.length),
   onAddIdea: addIdea,
   onEditStop: (id) => stopDialog.openEdit(stopById(id)),
+  onDismissLate: dismissLate,
   onAddStop: (date) => stopDialog.openAdd(date),
   onEditDay: (date) => dayDialog.open(dayByDate(date)),
   onGoBoard: goBoard,

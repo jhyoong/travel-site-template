@@ -10,7 +10,7 @@ const TRIP_FIELDS = ['name', 'start_date', 'end_date', 'timezone', 'travellers']
 const DAY_FIELDS = ['title', 'start_time', 'start_place', 'start_lat', 'start_lng', 'end_place', 'end_lat', 'end_lng'];
 const STOP_FIELDS = [
   'date', 'title', 'area', 'kind', 'duration_min', 'status', 'fixed_time', 'after_time',
-  'stub', 'booking_ref', 'notes', 'link', 'lat', 'lng',
+  'stub', 'booking_ref', 'notes', 'link', 'lat', 'lng', 'late_ok',
 ];
 
 const TRIP_COLUMNS = [...TRIP_FIELDS, 'updated_at', 'updated_by'];
@@ -43,6 +43,7 @@ const NUMBER_RULES = {
   end_lng: LNG,
 };
 const DATE_FIELDS = ['date', 'start_date', 'end_date'];
+const BOOL_FIELDS = ['late_ok'];
 const TIME_FIELDS = ['start_time', 'fixed_time', 'after_time'];
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -216,6 +217,15 @@ function cleanString(field, value) {
   return v;
 }
 
+// true/false -> 1/0 for SQLite.
+function cleanBool(field, value) {
+  if (value === null) return null;
+  if (typeof value !== 'boolean') {
+    throw new HttpError(400, `Field "${field}" must be true or false.`);
+  }
+  return value ? 1 : 0;
+}
+
 function cleanNumber(field, value) {
   if (value === null) return null;
   const rule = NUMBER_RULES[field];
@@ -237,7 +247,9 @@ function cleanFields(body, allowed) {
   const out = {};
   for (const field of allowed) {
     if (!(field in body)) continue;
-    const value = NUMBER_RULES[field] ? cleanNumber(field, body[field]) : cleanString(field, body[field]);
+    const value = NUMBER_RULES[field] ? cleanNumber(field, body[field])
+      : BOOL_FIELDS.includes(field) ? cleanBool(field, body[field])
+      : cleanString(field, body[field]);
     out[field] = value;
     if (value == null) continue;
     if (DATE_FIELDS.includes(field) && !isRealDate(value)) {
@@ -321,7 +333,7 @@ function pick(row, cols) {
 }
 
 const tripView = (row) => pick(row, TRIP_COLUMNS);
-const stopView = (row) => pick(row, STOP_COLUMNS);
+const stopView = (row) => ({ ...pick(row, STOP_COLUMNS), late_ok: row.late_ok === 1 });
 
 // Day settings for a date. Dates with no row get the defaults.
 function dayView(date, row) {
@@ -370,10 +382,13 @@ async function getTripRow(env) {
   return row;
 }
 
+// Stop snapshots store late_ok as 0/1; the API shows it as true/false.
 function parseSnapshot(value) {
   if (value == null) return null;
   try {
-    return JSON.parse(value);
+    const snap = JSON.parse(value);
+    if (snap && typeof snap.late_ok === 'number') snap.late_ok = snap.late_ok === 1;
+    return snap;
   } catch {
     return null;
   }
@@ -454,6 +469,7 @@ async function handleCreateStop(request, env, actor) {
   row.date ??= null;
   row.kind ??= 'sight';
   row.duration_min ??= 60;
+  row.late_ok ??= 0;
   row.status ??= row.date == null ? 'idea' : 'planned';
   checkIdeaRule(row);
   checkPair(row, 'lat', 'lng');
@@ -479,7 +495,7 @@ async function handleUpdateStop(request, env, actor, id) {
   const fields = cleanFields(body, STOP_FIELDS);
   requireSomeFields(fields, STOP_FIELDS);
   if ('title' in fields) requireTitle(fields);
-  rejectNulls(fields, ['kind', 'duration_min', 'status']);
+  rejectNulls(fields, ['kind', 'duration_min', 'status', 'late_ok']);
   const current = await getStopRow(env, id);
   const merged = { ...current, ...fields };
   checkIdeaRule(merged);
@@ -727,7 +743,7 @@ times are NOT stored. They are worked out from:
   - rough travel time between stops (from lat/lng; 15 min if unknown),
   - after_time (earliest start) and fixed_time (a start that never moves).
 If a fixed_time can't be reached in time, the stop shows as late
-("clashes"). To change when something happens, change the order,
+("clashes"), unless its late_ok is true. To change when something happens, change the order,
 durations, after_time or fixed_time.
 
 AUTHENTICATION
@@ -789,7 +805,7 @@ trip: {"name", "start_date", "end_date", "timezone", "travellers",
 
 stop: {"id", "date", "position", "title", "area", "kind", "duration_min",
        "status", "fixed_time", "after_time", "stub", "booking_ref", "notes",
-       "link", "lat", "lng", "created_at", "created_by", "updated_at", "updated_by"}
+       "link", "lat", "lng", "late_ok", "created_at", "created_by", "updated_at", "updated_by"}
        position is the order within its day or Ideas, 0 = first.
 
 day (in GET /api/itinerary):
@@ -844,7 +860,9 @@ Stop fields (POST /api/stops, PUT /api/stops/:id):
   link         http:// or https:// URL, max ${MAX_LENGTHS.link} chars
   lat          number -90 to 90. Set lat and lng together, or neither.
   lng          number -180 to 180. Used for travel estimates.
-  title, kind, duration_min and status cannot be set to null.
+  late_ok      true or false. Default false. true hides the late warning for
+               this stop (it happens at its fixed_time anyway, e.g. a flight).
+  title, kind, duration_min, status and late_ok cannot be set to null.
 
 ERRORS
 ------

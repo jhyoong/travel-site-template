@@ -118,6 +118,7 @@ a{color:inherit}
 .stub small{font-size:11px;font-weight:500;color:color-mix(in srgb,var(--day) 70%,var(--ink))}
 .late{display:flex;gap:7px;align-items:flex-start;margin:0 12px 12px 14px;padding:8px 10px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-size:13px;font-weight:500;line-height:1.35}
 .late .i{margin-top:1px}
+.late-x{margin-left:auto;padding:0 2px;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer;white-space:nowrap}
 
 .sugg{background:transparent;border:1.5px dashed color-mix(in srgb,var(--ink-3) 75%,transparent)}
 .sugg .title{color:var(--ink-2)}
@@ -287,6 +288,8 @@ body.dragging,body.dragging *{cursor:grabbing!important;user-select:none;-webkit
 .field small{display:block;margin-top:4px;font-size:12px;color:var(--ink-3)}
 .field input,.field select,.field textarea{display:block;width:100%;min-height:42px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:15px}
 .field textarea{resize:vertical}
+.check{display:flex;gap:8px;align-items:center;margin:0 0 14px;font-size:14px;font-weight:600;color:var(--ink-2);cursor:pointer}
+.check input{width:18px;height:18px;margin:0}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0 12px}
 fieldset{margin:0 0 14px;padding:12px 14px 0;border:1px solid var(--line-2);border-radius:12px}
 legend{padding:0 6px;font-size:13px;font-weight:600;color:var(--ink-2)}

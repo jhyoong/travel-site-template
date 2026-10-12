@@ -75,6 +75,15 @@ test("fixed_time holds and reports how late you would be", () => {
   assert.deepEqual(sc.clashes, [{ id: 2, title: "Stop 2", late_min: 45 }]);
 });
 
+test("late_ok keeps the fixed time but drops the late warning", () => {
+  const sc = schedule(day(), [stop(1, { duration_min: 120 }), stop(2, { fixed_time: "10:30", duration_min: 30, late_ok: true })]);
+  const b = sc.stops[1];
+  assert.equal(b.start, "10:30");
+  assert.equal(b.late_min, 0);
+  assert.equal(b.free_min, 0);
+  assert.deepEqual(sc.clashes, []);
+});
+
 test("fixed_time on the first stop overrides the day start without a clash", () => {
   const sc = schedule(day(), [stop(1, { fixed_time: "08:00" })]);
   assert.equal(sc.stops[0].start, "08:00");

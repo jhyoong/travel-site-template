@@ -44,6 +44,7 @@ export function initStopDialog(opts) {
     f.duration_min.value = stop ? stop.duration_min : 60;
     f.status.value = stop && stop.status !== "idea" ? stop.status : "planned";
     f.location.value = stop ? formatLocation(stop.lat, stop.lng) : "";
+    f.late_ok.checked = !!(stop && stop.late_ok);
     syncStatus();
     heading.textContent = stop ? "Edit stop" : "Add stop";
     deleteBtn.hidden = !stop;
@@ -65,7 +66,8 @@ export function initStopDialog(opts) {
       kind: f.kind.value,
       duration_min: Number(f.duration_min.value),
       lat: loc ? loc.lat : null,
-      lng: loc ? loc.lng : null
+      lng: loc ? loc.lng : null,
+      late_ok: f.late_ok.checked
     };
     TEXT.forEach((k) => { b[k] = f[k].value.trim(); });
     return b;

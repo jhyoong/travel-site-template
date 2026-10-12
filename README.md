@@ -73,6 +73,17 @@ Open the URL it prints and sign in with one of your keys.
 
 The first time you sign in, you'll be asked for the trip name, dates and timezone.
 
+## Upgrading
+
+If your database was created before stops had a `late_ok` column (used to
+dismiss late warnings), add it once. `deploy.sh` does this for you.
+
+```sh
+npx wrangler d1 execute itinerary-db --remote --command "ALTER TABLE stops ADD COLUMN late_ok INTEGER NOT NULL DEFAULT 0 CHECK (late_ok IN (0, 1))"
+```
+
+Use `--local` instead of `--remote` for your local database.
+
 ## Keys
 
 - Send the key in an `Authorization: Bearer <key>` header. The web pages do this for you after you sign in.

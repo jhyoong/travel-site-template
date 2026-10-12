@@ -41,7 +41,7 @@ export function initTimeline(ctx) {
           <span class="chev">${ico("chev", 18)}</span>
         </button></h3>
         ${st === "booked" ? `<div class="stub">${ico("check", 16)}<span>Booked</span>${r.stub ? `<small>${esc(r.stub)}</small>` : ""}</div>` : ""}
-        ${r.late_min ? `<p class="late">${ico("alert", 16)}<span>You'd arrive ${fmtDur(r.late_min)} late for this ${st === "booked" ? "booking" : "fixed start time"}.</span></p>` : ""}
+        ${r.late_min ? `<p class="late">${ico("alert", 16)}<span>You'd arrive ${fmtDur(r.late_min)} late for this ${st === "booked" ? "booking" : "fixed start time"}.</span>${canEdit ? `<button class="late-x" type="button" data-act="late-ok" data-id="${id}">Dismiss</button>` : ""}</p>` : ""}
         <div class="details" id="det-${id}" ${open ? "" : "hidden"}>
           ${r.notes ? `<p class="notes">${esc(r.notes)}</p>` : ""}
           ${r.booking_ref ? `<p class="ref"><strong>Booking:</strong> ${esc(r.booking_ref)}</p>` : ""}
@@ -178,6 +178,7 @@ export function initTimeline(ctx) {
     if (a.dataset.act === "keep") ctx.onKeep(id);
     else if (a.dataset.act === "ideas") ctx.onToIdeas(id);
     else if (a.dataset.act === "edit") ctx.onEditStop(id);
+    else if (a.dataset.act === "late-ok") ctx.onDismissLate(id);
   });
 
   return { render, spy, flashStop, revealStop };

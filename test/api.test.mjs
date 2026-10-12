@@ -111,7 +111,7 @@ async function cleanup(ids) {
 
 const STOP_KEYS = [
   'after_time', 'area', 'booking_ref', 'created_at', 'created_by', 'date', 'duration_min', 'fixed_time',
-  'id', 'kind', 'lat', 'link', 'lng', 'notes', 'position', 'status', 'stub', 'title', 'updated_at', 'updated_by',
+  'id', 'kind', 'lat', 'late_ok', 'link', 'lng', 'notes', 'position', 'status', 'stub', 'title', 'updated_at', 'updated_by',
 ];
 
 const PROTECTED = [
@@ -253,6 +253,7 @@ test('stop: create in a day and in Ideas, with defaults and audit', async (t) =>
   assert.equal(a.kind, 'sight');
   assert.equal(a.duration_min, 60);
   assert.equal(a.status, 'planned');
+  assert.equal(a.late_ok, false);
   assert.equal(a.created_by, NAME_A);
 
   const b = await createStop({ date: DAY1, title: 'Lunch', kind: 'food', duration_min: 75 }, KEY_B);
@@ -297,6 +298,7 @@ test('stop: validation rules', async (t) => {
   await bad({ title: 'x', lat: 35, lng: '135' }, /"lng".*number/);
   await bad({ title: 'x', link: 'javascript:alert(1)' }, /"link".*http/);
   await bad({ title: 'x'.repeat(201) }, /"title".*too long/);
+  await bad({ title: 'x', late_ok: 1 }, /"late_ok" must be true or false/);
   await bad({ title: 'x', position: 3 }, /Unknown field.*position/);
   assertError(await api('POST', '/api/stops', { key: KEY_A, rawBody: '{bad json' }), 400, /JSON/);
 
@@ -306,6 +308,7 @@ test('stop: validation rules', async (t) => {
   assertError(await upd({ title: '' }), 400, /"title" is required/);
   assertError(await upd({ kind: null }), 400, /"kind" cannot be null/);
   assertError(await upd({ duration_min: null }), 400, /"duration_min" cannot be null/);
+  assertError(await upd({ late_ok: null }), 400, /"late_ok" cannot be null/);
   assertError(await upd({ status: 'idea' }), 400, /only for stops with no date/);
   assertError(await upd({ date: null }), 400, /no date is an idea/);
   assertError(await upd({ lat: 35 }), 400, /must both be set/);
@@ -521,6 +524,15 @@ test('itinerary: returns computed times from schedule.js', async (t) => {
   assert.deepEqual(rb.leg, { mode: 'any', min: 15, text: 'About 15 min travel' });
   assert.deepEqual(sc.clashes, [{ id: b.id, title: 'B', late_min: 45 }]);
   assert.equal(sc.total_min, 90);
+
+  const ok = await api('PUT', `/api/stops/${b.id}`, { key: KEY_A, body: { late_ok: true } });
+  assert.equal(ok.status, 200, ok.text);
+  assert.equal(ok.data.late_ok, true);
+  assert.equal((await latestAudit()).after.late_ok, true);
+  const sc2 = (await getItinerary()).days.find((d) => d.date === DAY4).schedule;
+  assert.equal(sc2.stops[1].start, '10:30');
+  assert.equal(sc2.stops[1].late_min, 0);
+  assert.deepEqual(sc2.clashes, []);
 });
 
 test('trip: shrinking dates past existing stops is rejected', async (t) => {
