@@ -54,8 +54,8 @@
           <p id="trip-meta"></p>
         </div>
         <div class="vswitch" id="vswitch" role="group" aria-label="View">
-          <button type="button" data-v="timeline" aria-pressed="true"></button>
-          <button type="button" data-v="board" aria-pressed="false"></button>
+          <button type="button" data-v="timeline" aria-pressed="true">Timeline</button>
+          <button type="button" data-v="board" aria-pressed="false">Board</button>
         </div>
       </header>
 
@@ -114,7 +114,7 @@
             <option value="hotel">Hotel</option>
           </select>
         </label>
-        <label class="field"><span>Duration (minutes)</span><input name="duration_min" type="number" min="5" max="1440" step="5" required></label>
+        <label class="field"><span>Duration (minutes)</span><input name="duration_min" type="number" min="5" max="1440" step="1" required></label>
       </div>
       <div class="row">
         <label class="field"><span>Fixed start time</span><input name="fixed_time" type="time"><small>For bookings. This time never moves.</small></label>
