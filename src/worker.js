@@ -555,6 +555,42 @@ async function handleMoveStop(request, env, actor, id) {
   return json(stopView(results[results.length - 1].results[0]));
 }
 
+async function handleUpdateDay(request, env, actor, date) {
+  if (!isRealDate(date)) {
+    throw new HttpError(400, `The day in the URL must be a real calendar date in format YYYY-MM-DD (e.g. /api/days/2025-03-14). Got "${date}".`);
+  }
+  const body = await readJsonObject(request);
+  const fields = cleanFields(body, DAY_FIELDS);
+  requireSomeFields(fields, DAY_FIELDS);
+  rejectNulls(fields, ['start_time']);
+  checkInTrip(await getTripRow(env), date);
+  const current = await env.DB.prepare('SELECT * FROM days WHERE date = ?').bind(date).first();
+  const merged = { ...current, ...fields };
+  checkPair(merged, 'start_lat', 'start_lng');
+  checkPair(merged, 'end_lat', 'end_lng');
+  const keys = Object.keys(fields);
+  const cols = ['date', ...keys, 'updated_at', 'updated_by'];
+  const ts = now();
+  const values = [date, ...keys.map((k) => fields[k]), ts, actor];
+  const updates = [...keys, 'updated_at', 'updated_by'].map((c) => `${c} = excluded.${c}`).join(', ');
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO audit_log (ts, actor, action, item_id, before)
+       VALUES (?, ?, 'update_day', NULL, (SELECT ${DAY_JSON} FROM days WHERE date = ?))`
+    ).bind(ts, actor, date),
+    env.DB.prepare(
+      `INSERT INTO days (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})
+       ON CONFLICT (date) DO UPDATE SET ${updates}`
+    ).bind(...values),
+    env.DB.prepare(
+      `UPDATE audit_log SET after = (SELECT ${DAY_JSON} FROM days WHERE date = ?)
+       WHERE id = (SELECT max(id) FROM audit_log WHERE action = 'update_day' AND after IS NULL)`
+    ).bind(date),
+    env.DB.prepare('SELECT * FROM days WHERE date = ?').bind(date),
+  ]);
+  return json(dayView(date, results[3].results[0]));
+}
+
 async function handleAudit(url, env) {
   let limit = AUDIT_DEFAULT_LIMIT;
   const raw = url.searchParams.get('limit');
@@ -608,6 +644,13 @@ async function handleApi(request, env, url) {
     if (method !== 'PUT') throw methodNotAllowed(['PUT']);
     const actor = await requireActor(request, env);
     return handleUpdateTrip(request, env, actor);
+  }
+
+  const dayMatch = /^\/api\/days\/([^/]+)$/.exec(path);
+  if (dayMatch) {
+    if (method !== 'PUT') throw methodNotAllowed(['PUT']);
+    const actor = await requireActor(request, env);
+    return handleUpdateDay(request, env, actor, dayMatch[1]);
   }
 
   if (path === '/api/stops') {
