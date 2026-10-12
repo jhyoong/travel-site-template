@@ -39,7 +39,7 @@ If unpkg or OpenFreeMap can't be reached, the map view shows an error message an
 
 You need Node.js and a Cloudflare account. All commands use `npx wrangler`, so you don't need a global install.
 
-To do every step below in one go, run `bash deploy.sh`. It is safe to run again later to redeploy. It also asks for the Worker name (which sets the `workers.dev` URL) and an optional custom domain. A custom domain must be active in your Cloudflare account; Cloudflare creates its DNS record and certificate. The steps it runs are:
+To do every step below in one go, run `bash deploy.sh`. It is safe to run again later to redeploy. It also asks for the Worker name (which sets the `workers.dev` URL) an optional custom domain, and the colour theme (see [Theme](#theme)). A custom domain must be active in your Cloudflare account; Cloudflare creates its DNS record and certificate. The steps it runs are:
 
 1. Fork or clone this repo, then log in:
    ```sh
@@ -101,6 +101,20 @@ VIEW_PUBLIC = "true"
 
 Writes and the change log always need a key.
 
+## Theme
+
+The site has five colour themes. Pictures of each are in `sample_themes/`.
+
+| Theme | Look |
+|---|---|
+| `coastal` (default) | light, blue and grey |
+| `autumn` | light, warm paper with maple and ginkgo |
+| `matcha` | light, tea green and brown |
+| `lantern` | dark, warm with orange |
+| `midnight` | dark, cool blue |
+
+`deploy.sh` asks which one to use. To change it by hand, edit `data-theme` on the `<html>` line in `public/index.html`, then redeploy. Dark themes also use a dark map. The colours are in the "Themes" section at the top of `public/style.css`. To add a theme, copy a block there and add its name to `THEMES` in `deploy.sh`.
+
 ## Using the API (agents)
 
 `GET /api` returns plain-text docs covering every endpoint, field format and validation rule, with example curl calls. Point an agent at it along with a key.
@@ -152,8 +166,9 @@ public/js/stop-dialog.js add/edit stop dialog
 public/js/day-dialog.js  day settings dialog
 public/js/setup.js       trip form (setup and trip settings)
 public/js/history.js     recent changes panel
-public/style.css         styles
+public/style.css         styles and colour themes
 schema.sql               D1 tables: trip, days, stops, audit_log
 wrangler.toml            Worker, assets, D1 binding, VIEW_PUBLIC
 test/                    unit tests and API integration tests
+sample_themes/           a picture of each colour theme
 ```

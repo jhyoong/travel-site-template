@@ -74,7 +74,29 @@ if [ "$DOMAIN" != "$CURRENT_DOMAIN" ]; then
   fi
 fi
 
-# 4. Create the database, if needed, and write its id into wrangler.toml.
+# 4. Choose the colour theme. It is stored in data-theme on the <html> line of
+#    public/index.html. Pictures of each theme are in sample_themes/.
+THEMES="coastal autumn matcha lantern midnight"
+CURRENT_THEME="$(sed -n "s/^<html lang=\"en\" data-theme=\"\(.*\)\">$/\1/p" public/index.html)"
+CURRENT_THEME="${CURRENT_THEME:-coastal}"
+echo "Colour themes: coastal, autumn, matcha (light); lantern, midnight (dark)."
+while true; do
+  read -r -p "Theme [$CURRENT_THEME]: " THEME
+  THEME="$(echo "${THEME:-$CURRENT_THEME}" | tr "[:upper:]" "[:lower:]")"
+  if [[ " $THEMES " == *" $THEME "* ]]; then
+    break
+  fi
+  echo "Pick one of: $THEMES"
+done
+if [ "$THEME" != "$CURRENT_THEME" ]; then
+  node -e '
+    const fs = require("fs");
+    const t = fs.readFileSync("public/index.html", "utf8");
+    fs.writeFileSync("public/index.html", t.replace(/^<html lang="en"[^>]*>$/m, `<html lang="en" data-theme="${process.argv[1]}">`));' "$THEME"
+  echo "   Set theme $THEME in public/index.html"
+fi
+
+# 5. Create the database, if needed, and write its id into wrangler.toml.
 if grep -q "REPLACE_WITH_YOUR_D1_DATABASE_ID" wrangler.toml; then
   db_id_of() {
     $WRANGLER d1 list --json 2>/dev/null | node -e '
@@ -102,7 +124,7 @@ if grep -q "REPLACE_WITH_YOUR_D1_DATABASE_ID" wrangler.toml; then
   echo "   Wrote database_id $DB_ID to wrangler.toml"
 fi
 
-# 5. Create the tables. schema.sql only creates what is missing.
+# 6. Create the tables. schema.sql only creates what is missing.
 echo "== Applying schema.sql"
 $WRANGLER d1 execute "$DB_NAME" --remote --file=schema.sql --yes
 
@@ -116,11 +138,11 @@ if [ "$HAS_LATE_OK" = "0" ]; then
     --command "ALTER TABLE stops ADD COLUMN late_ok INTEGER NOT NULL DEFAULT 0 CHECK (late_ok IN (0, 1))"
 fi
 
-# 6. Deploy the Worker.
+# 7. Deploy the Worker.
 echo "== Deploying"
 $WRANGLER deploy
 
-# 7. Set the keys, if they are not set yet.
+# 8. Set the keys, if they are not set yet.
 if $WRANGLER secret list 2>/dev/null | grep -q '"API_KEYS"'; then
   echo "== API_KEYS is already set. To change keys, run: npx wrangler secret put API_KEYS"
 else

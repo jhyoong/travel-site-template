@@ -8,10 +8,10 @@ import { mapPoints } from "./map-points.js";
 const MAPLIBRE = "https://unpkg.com/maplibre-gl@5.24.0/dist/";
 const MAPLIBRE_CSS_SRI = "sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK";
 const MAPLIBRE_JS_SRI = "sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp";
-// OpenFreeMap needs no key. This style labels places in English (or Latin
-// letters) with the local name next to it, and adds its own credit line.
-const STYLE = "https://tiles.openfreemap.org/styles/liberty";
-const PIN = "#2F55A4"; // --d1 in style.css
+// OpenFreeMap needs no key. These styles label places in English (or Latin
+// letters) with the local name next to it, and add their own credit line.
+// Dark themes (color-scheme: dark in style.css) get the dark style.
+const STYLES = { light: "https://tiles.openfreemap.org/styles/liberty", dark: "https://tiles.openfreemap.org/styles/dark" };
 const WORLD = { center: [0, 20], zoom: 1 };
 
 const LOAD_FAILED = "The map could not be loaded. Check your internet connection, then reload the page.";
@@ -62,7 +62,8 @@ export function initMap(ctx) {
   }
 
   function createMap(ml) {
-    map = new ml.Map({ container: mapEl, style: STYLE, center: WORLD.center, zoom: WORLD.zoom });
+    const root = getComputedStyle(document.documentElement);
+    map = new ml.Map({ container: mapEl, style: root.colorScheme === "dark" ? STYLES.dark : STYLES.light, center: WORLD.center, zoom: WORLD.zoom });
     map.addControl(new ml.NavigationControl({ showCompass: false }), "top-left");
     let warned = false;
     // Style, tile and font failures all arrive here.
@@ -79,7 +80,8 @@ export function initMap(ctx) {
     map.resize(); // the map box may have been hidden since the last draw
     markers.forEach((m) => m.remove());
     const points = mapPoints(list, which);
-    markers = points.map((p) => new ml.Marker({ color: PIN })
+    const pin = getComputedStyle(document.documentElement).getPropertyValue("--d1").trim(); // the theme colour
+    markers = points.map((p) => new ml.Marker({ color: pin })
       .setLngLat([p.lng, p.lat])
       .setPopup(new ml.Popup({ offset: 25 }).setHTML(p.labels.map(esc).join("<br>")))
       .addTo(map));
