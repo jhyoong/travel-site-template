@@ -770,6 +770,9 @@ POST   /api/stops/:id/move     Reorder a stop or move it to another day or Ideas
                                Moving to Ideas sets status "idea". Moving out of
                                Ideas sets status "planned", so a "booked" stop
                                sent to Ideas and back comes back "planned". -> stop
+                               The web page keeps booked stops on their day, but
+                               the API allows moving them. Change a booked stop's
+                               day only when that is intended.
 DELETE /api/stops/:id          Delete a stop. -> {"deleted": <id>}. 404 if missing.
 GET    /api/audit?limit=50     Recent changes, newest first.
                                limit: positive integer, default ${AUDIT_DEFAULT_LIMIT}, max ${AUDIT_MAX_LIMIT}.

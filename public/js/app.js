@@ -102,13 +102,15 @@ function moveStop(id, to, idx) {
     const sc = dayByDate(to).schedule;
     if (sc.clashes.length) msg += " " + clashText(sc, true);
   }
-  send("POST", `/api/stops/${id}/move`, { date: to === "ideas" ? null : to, index: toIdx });
-  toast(msg, () => undoMove(id, from, fromIdx, prevStatus));
+  const pending = send("POST", `/api/stops/${id}/move`, { date: to === "ideas" ? null : to, index: toIdx });
+  toast(msg, () => undoMove(id, from, fromIdx, prevStatus, pending));
 }
 
 // Moves a stop back and restores its status (a move to or from Ideas
-// changes the status).
-async function undoMove(id, col, idx, prevStatus) {
+// changes the status). Waits for the original move so the server gets
+// the two writes in order.
+async function undoMove(id, col, idx, prevStatus, pending) {
+  await pending;
   if (!model) return;
   if (!stopById(id) || !hasCol(col)) { renderAll(); return; }
   moveLocal(id, col, idx);
@@ -129,8 +131,9 @@ function keepSuggestion(id) {
   const title = stopById(id).title;
   setStatusLocal(id, "planned");
   timeline.flashStop(id);
-  send("PUT", `/api/stops/${id}`, { status: "planned" });
-  toast(`Added ${title} to the plan.`, () => {
+  const pending = send("PUT", `/api/stops/${id}`, { status: "planned" });
+  toast(`Added ${title} to the plan.`, async () => {
+    await pending;
     if (!model) return;
     setStatusLocal(id, "suggested");
     send("PUT", `/api/stops/${id}`, { status: "suggested" });
@@ -214,6 +217,13 @@ $("vswitch").querySelector('[data-v="board"]').innerHTML = ico("board", 18) + "B
 $("vswitch").addEventListener("click", (e) => { const b = e.target.closest("[data-v]"); if (b) setView(b.dataset.v); });
 
 /* ---------- screens ---------- */
+// Hides any toast so its Undo can't run after sign-out.
+function clearToast() {
+  $("toast").classList.remove("show");
+  const undoButton = $("toast").querySelector("button");
+  if (undoButton) undoButton.disabled = true;
+}
+
 function show(id) {
   STATES.forEach((s) => { $(s).hidden = s !== id; });
 }
@@ -268,10 +278,7 @@ function showSignIn(message) {
   renderTopbar();
   showError($("page-error"), "");
   showError($("signin-error"), message || "");
-  // Hide any toast so its Undo can't run after sign-out.
-  $("toast").classList.remove("show");
-  const undoButton = $("toast").querySelector("button");
-  if (undoButton) undoButton.disabled = true;
+  clearToast();
   $("signin-back").hidden = !canViewPublic;
   show("signin-section");
   $("signin-key").focus();
@@ -347,7 +354,7 @@ $("signin-form").addEventListener("submit", async (ev) => {
 
 $("signin-button").addEventListener("click", () => showSignIn(""));
 $("signin-back").addEventListener("click", () => load());
-$("logout-button").addEventListener("click", () => { clearKey(); user = ""; model = null; renderTopbar(); load(); });
+$("logout-button").addEventListener("click", () => { clearKey(); user = ""; model = null; clearToast(); renderTopbar(); load(); });
 $("history-button").addEventListener("click", () => historyPanel.open());
 // Don't let Esc close the trip dialog while a save is in progress,
 // or a failed save's error would be lost.
