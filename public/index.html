@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Itinerary</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div class="topbar">
+    <span id="signed-in" hidden></span>
+    <div class="tools">
+      <button type="button" id="trip-button" class="linkbtn" hidden>Trip settings</button>
+      <button type="button" id="history-button" class="linkbtn" hidden>Recent changes</button>
+      <button type="button" id="signin-button" class="linkbtn" hidden>Sign in to edit</button>
+      <button type="button" id="logout-button" class="linkbtn" hidden>Log out</button>
+    </div>
+  </div>
+
+  <p id="page-error" class="error page-error" role="alert" hidden></p>
+  <p id="status" class="status">Loading...</p>
+
+  <section id="signin-section" class="box" hidden>
+    <h1>Sign in</h1>
+    <p>Enter the key you were given.</p>
+    <form id="signin-form">
+      <label class="field">
+        <span>Your key</span>
+        <input id="signin-key" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="signin-error" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="submit" class="btn btn-ink">Sign in</button>
+        <button type="button" id="signin-back" class="btn" hidden>Back to itinerary</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="setup-section" class="box" hidden>
+    <h1>Set up your trip</h1>
+    <p>You can change these later.</p>
+    <div id="setup-form"></div>
+  </section>
+
+  <div id="trip-section" hidden>
+    <div class="app" id="app" data-view="timeline">
+      <header class="apphead">
+        <div class="trip">
+          <h1 id="trip-name"></h1>
+          <p id="trip-meta"></p>
+        </div>
+        <div class="vswitch" id="vswitch" role="group" aria-label="View">
+          <button type="button" data-v="timeline" aria-pressed="true">Timeline</button>
+          <button type="button" data-v="board" aria-pressed="false">Board</button>
+        </div>
+      </header>
+
+      <main class="tl-view" id="tl-view">
+        <div class="tl-intro">
+          <ul class="legend" aria-label="Key">
+            <li><span class="sw sw-ticket"></span>Booked</li>
+            <li><span class="sw sw-plan"></span>Planned</li>
+            <li><span class="sw sw-sugg"></span>Suggestion</li>
+          </ul>
+          <p class="hint">Times update when you rearrange stops. Fixed start times stay put.</p>
+        </div>
+        <nav class="tl-nav" id="tl-nav" aria-label="Jump to a day"></nav>
+        <div id="tl-days"></div>
+      </main>
+
+      <main class="bd-view" id="bd-view" hidden>
+        <div class="bd-top">
+          <p class="hint edit-only">Drag a stop by its handle, or tap the handle to move it. Times update as you go, and booked stops stay on their day.</p>
+          <ul class="legend" aria-label="Key">
+            <li><span class="sw sw-ticket"></span>Booked</li>
+            <li><span class="sw sw-plan"></span>Planned</li>
+            <li><span class="sw sw-sugg"></span>Idea or suggestion</li>
+          </ul>
+          <nav class="bd-jump" id="bd-jump" aria-label="Jump to column"></nav>
+        </div>
+        <div class="board" id="board"></div>
+      </main>
+    </div>
+  </div>
+
+  <div class="menu" id="menu" role="menu" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="stop-dialog" class="sheet" aria-labelledby="stop-dialog-title">
+    <form id="stop-form">
+      <h2 id="stop-dialog-title">Add stop</h2>
+      <label class="field"><span>Title</span><input name="title" type="text" required maxlength="200" autocomplete="off"></label>
+      <div class="row">
+        <label class="field"><span>Day</span><select name="date"></select></label>
+        <label class="field" data-status-field><span>Status</span>
+          <select name="status">
+            <option value="planned">Planned</option>
+            <option value="booked">Booked</option>
+            <option value="suggested">Suggestion</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="field"><span>Type</span>
+          <select name="kind">
+            <option value="sight">Sight</option>
+            <option value="food">Food</option>
+            <option value="walk">Walk</option>
+            <option value="train">Train or transport</option>
+            <option value="hotel">Hotel</option>
+          </select>
+        </label>
+        <label class="field"><span>Duration (minutes)</span><input name="duration_min" type="number" min="5" max="1440" step="1" required></label>
+      </div>
+      <div class="row">
+        <label class="field"><span>Fixed start time</span><input name="fixed_time" type="time"><small>For bookings. This time never moves.</small></label>
+        <label class="field"><span>Not before</span><input name="after_time" type="time"><small>Earliest start, for example lunch.</small></label>
+      </div>
+      <label class="field"><span>Area</span><input name="area" type="text" maxlength="100" placeholder="e.g. Higashiyama"></label>
+      <label class="field"><span>Location</span><input name="location" type="text" autocomplete="off" placeholder="35.0089, 135.7700 or a Google Maps link"><small>Used to estimate travel time.</small></label>
+      <div class="row">
+        <label class="field"><span>Booking label</span><input name="stub" type="text" maxlength="40" placeholder="e.g. Car 8"></label>
+        <label class="field"><span>Link</span><input name="link" type="url" placeholder="https://"></label>
+      </div>
+      <label class="field"><span>Booking details</span><textarea name="booking_ref" rows="2" maxlength="500"></textarea></label>
+      <label class="field"><span>Notes</span><textarea name="notes" rows="3" maxlength="5000"></textarea></label>
+      <p class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="submit" class="btn btn-ink">Save</button>
+        <button type="button" class="btn" data-action="cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" data-action="delete">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="day-dialog" class="sheet" aria-labelledby="day-dialog-title">
+    <form id="day-form">
+      <h2 id="day-dialog-title">Edit day</h2>
+      <label class="field"><span>Title</span><input name="title" type="text" maxlength="200" placeholder="e.g. Arashiyama and the north-west"></label>
+      <label class="field"><span>Start time</span><input name="start_time" type="time" required><small>When the first stop starts, unless it has a fixed start time.</small></label>
+      <fieldset>
+        <legend>Start from (optional)</legend>
+        <label class="field"><span>Place</span><input name="start_place" type="text" maxlength="200" placeholder="e.g. Hotel"></label>
+        <label class="field"><span>Location</span><input name="start_location" type="text" autocomplete="off" placeholder="35.0089, 135.7700 or a Google Maps link"></label>
+      </fieldset>
+      <fieldset>
+        <legend>End at (optional)</legend>
+        <label class="field"><span>Place</span><input name="end_place" type="text" maxlength="200" placeholder="e.g. Hotel"></label>
+        <label class="field"><span>Location</span><input name="end_location" type="text" autocomplete="off" placeholder="35.0089, 135.7700 or a Google Maps link"></label>
+      </fieldset>
+      <p class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="submit" class="btn btn-ink">Save</button>
+        <button type="button" class="btn" data-action="cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="trip-dialog" class="sheet" aria-labelledby="trip-dialog-title">
+    <h2 id="trip-dialog-title">Trip settings</h2>
+    <div id="trip-dialog-form"></div>
+  </dialog>
+
+  <dialog id="history-dialog" aria-labelledby="history-title">
+    <div class="panel-header">
+      <h2 id="history-title">Recent changes</h2>
+      <button type="button" class="btn" data-action="close">Close</button>
+    </div>
+    <p class="status" hidden></p>
+    <p class="error" role="alert" hidden></p>
+    <ol class="audit"></ol>
+  </dialog>
+</body>
+</html>

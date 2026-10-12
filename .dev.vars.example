@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development (`npx wrangler dev`).
+# In production, set it with `npx wrangler secret put API_KEYS`.
+# JSON object mapping a name (the actor recorded in the audit log) to its key.
+API_KEYS={"alice":"replace-with-a-long-random-key","claude-agent":"replace-with-another-long-random-key"}
