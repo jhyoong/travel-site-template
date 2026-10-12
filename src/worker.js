@@ -520,6 +520,41 @@ async function handleDeleteStop(env, actor, id) {
   return json({ deleted: id });
 }
 
+async function handleMoveStop(request, env, actor, id) {
+  const body = await readJsonObject(request);
+  checkUnknownFields(body, ['date', 'index']);
+  if (!('date' in body)) {
+    throw new HttpError(400, 'Field "date" is required: a day in format YYYY-MM-DD, or null for Ideas.');
+  }
+  const date = body.date === null ? null : cleanString('date', body.date);
+  if (date != null && !isRealDate(date)) {
+    throw new HttpError(400, `Field "date" must be a real calendar date in format YYYY-MM-DD (e.g. "2025-03-14"), or null for Ideas. Got "${date}".`);
+  }
+  if (!Number.isInteger(body.index) || body.index < 0) {
+    throw new HttpError(400, 'Field "index" is required: a whole number, 0 for the top of the column. Larger numbers go to the end.');
+  }
+  const current = await getStopRow(env, id);
+  if (date != null) checkInTrip(await getTripRow(env), date);
+  const same = current.date === date;
+  const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM stops WHERE date IS ?').bind(date).first();
+  const index = Math.min(body.index, same ? n - 1 : n);
+  if (same && index === current.position) return json(stopView(current));
+  const position = same && index > current.position ? index + 0.5 : index - 0.5;
+  const status = date == null ? 'idea' : current.status === 'idea' ? 'planned' : current.status;
+  const ts = now();
+  const statements = [
+    auditBefore(env, ts, actor, 'move', id),
+    env.DB.prepare(
+      'UPDATE stops SET date = ?, position = ?, status = ?, updated_at = ?, updated_by = ? WHERE id = ?'
+    ).bind(date, position, status, ts, actor, id),
+    renumber(env, date),
+  ];
+  if (!same) statements.push(renumber(env, current.date));
+  statements.push(auditAfter(env, 'move', id), env.DB.prepare('SELECT * FROM stops WHERE id = ?').bind(id));
+  const results = await env.DB.batch(statements);
+  return json(stopView(results[results.length - 1].results[0]));
+}
+
 async function handleAudit(url, env) {
   let limit = AUDIT_DEFAULT_LIMIT;
   const raw = url.searchParams.get('limit');
@@ -579,6 +614,13 @@ async function handleApi(request, env, url) {
     if (method !== 'POST') throw methodNotAllowed(['POST']);
     const actor = await requireActor(request, env);
     return handleCreateStop(request, env, actor);
+  }
+
+  const moveMatch = /^\/api\/stops\/([^/]+)\/move$/.exec(path);
+  if (moveMatch) {
+    if (method !== 'POST') throw methodNotAllowed(['POST']);
+    const actor = await requireActor(request, env);
+    return handleMoveStop(request, env, actor, parseId(moveMatch[1]));
   }
 
   const stopMatch = /^\/api\/stops\/([^/]+)$/.exec(path);
