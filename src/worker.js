@@ -292,7 +292,7 @@ function checkIdeaRule(row) {
     throw new HttpError(400, 'A stop with no date is an idea, so "status" must be "idea". To put it on a day, send a "date" (or use POST /api/stops/:id/move).');
   }
   if (row.date != null && row.status === 'idea') {
-    throw new HttpError(400, 'Status "idea" is only for stops with no date. To put it on a day, also send a "status" such as "planned" (or use POST /api/stops/:id/move).');
+    throw new HttpError(400, 'Status "idea" is only for stops with no date. To send it to Ideas, also send "date": null. To keep it on a day, use a status such as "planned". (Or use POST /api/stops/:id/move.)');
   }
 }
 
