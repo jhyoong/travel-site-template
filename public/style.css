@@ -1,4 +1,4 @@
-/* Base: the itinerary-combined.html template. App additions are at the end. */
+/* Timeline and board views first, then forms, dialogs and other additions. */
 :root{
   --bg:#EDF0F3; --surface:#FFFFFF; --ink:#1B2130; --ink-2:#4A5263; --ink-3:#727B8B;
   --line:#D4DAE2; --line-2:#E3E7ED; --colbg:#F7F8FA;
@@ -296,7 +296,7 @@ dialog h2{margin:0 0 16px;font-size:20px;line-height:1.25}
 .audit .empty{padding:18px 16px;border:1.5px dashed var(--line)}
 .audit-time{display:block;font-size:12px;color:var(--ink-3)}
 
-/* additions to the template views */
+/* additions to the timeline and board views */
 .day-actions{display:flex;gap:2px;margin-right:-10px}
 .day-actions .linkbtn{margin-right:0}
 .addstop{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:44px;margin:14px 0 0;border:1.5px dashed var(--line);border-radius:12px;background:none;color:var(--ink-2);font-weight:600;font-size:14px;cursor:pointer}

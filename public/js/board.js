@@ -1,6 +1,6 @@
 // Board view: one column per day plus Ideas. Stops move by dragging the
 // handle (pointer events, so mouse and touch both work) or with the menu
-// that opens when the handle is tapped. Ported from the template.
+// that opens when the handle is tapped.
 import { ico, esc, plural, clashText, reduce, toast } from "./ui.js";
 import { fmtDur } from "./schedule.js";
 

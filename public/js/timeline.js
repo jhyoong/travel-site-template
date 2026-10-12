@@ -1,5 +1,5 @@
 // Timeline view: a button per day, then one section per day with its stops
-// in order and the travel between them. Ported from the template.
+// in order and the travel between them.
 import { ico, esc, plural, clashText, reduce, LEG } from "./ui.js";
 import { fmtDur, FREE_MIN } from "./schedule.js";
 import { safeHref } from "./api.js";

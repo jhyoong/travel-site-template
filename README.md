@@ -47,10 +47,6 @@ Open the URL it prints and sign in with one of your keys.
 
 The first time you sign in, you'll be asked for the trip name, dates and timezone.
 
-## Upgrading from the earlier version
-
-The database layout changed (events became ordered stops), and there is no migration. Create a new D1 database (step 2 above), put its `database_id` in `wrangler.toml`, run step 3, and deploy. Re-enter the trip through the page or the API.
-
 ## Keys
 
 - Send the key in an `Authorization: Bearer <key>` header. The web pages do this for you after you sign in.
@@ -98,8 +94,6 @@ To run only the unit tests: `node --test test/dates.test.mjs test/schedule.test.
 
 To run one group of API tests: `TEST_PATTERN='^move:' bash test/run.sh`.
 
-The page itself has no automated tests. Use the manual checklist in `docs/manual-checklist.md`.
-
 Do not point `test/api.test.mjs` at a real deployment. It overwrites the trip details.
 
 ## Files
@@ -107,7 +101,6 @@ Do not point `test/api.test.mjs` at a real deployment. It overwrites the trip de
 ```
 src/worker.js            routing, auth, API, validation, audit log
 public/index.html        the only page: sign in, setup, timeline, board, dialogs
-public/edit.html         redirect to / (old link)
 public/js/app.js         page startup, state, moves and undo
 public/js/api.js         key storage, API calls, DOM helpers
 public/js/schedule.js    computed stop times (shared with the Worker)

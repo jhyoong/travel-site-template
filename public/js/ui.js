@@ -1,5 +1,5 @@
 // Shared page helpers: icons, escaping, text helpers, day colours and the
-// toast. Icons and most helpers come from the itinerary-combined template.
+// toast.
 import { fmtDur } from "./schedule.js";
 
 const ICON = {
