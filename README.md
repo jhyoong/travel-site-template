@@ -1,15 +1,39 @@
 # Itinerary Template
 
-A private, single-trip itinerary site that runs on Cloudflare's free tier.
-Fork it once per trip.
+A private, single-trip itinerary site that runs within limits of Cloudflare's free tier (as of OCT 2026).
+Meant for single use deployments, so fork it once per trip.
 
 - A timeline view shows each day's stops in order, with times worked out from durations and rough travel estimates. A board view lets you drag stops between days and an Ideas column.
 - Stops can be booked (with fixed times), planned, suggested, or ideas.
+- A map view shows one day's locations, or the entire trip, with place names in English and the local language.
 - Agents use a REST API (plain-text docs at `GET /api`). The API returns the same computed times the page shows.
 - Every reader and writer uses a named key. Every change is logged with the key's name.
 - Private by default: viewing and editing both need a key.
 
 Stack: one Cloudflare Worker (pages and API) and a D1 (SQLite) database. Plain HTML, CSS and JavaScript, with no build step.
+
+## Dependencies
+
+There is no `package.json` and nothing to install. Everything below is either run with `npx` or loaded by the browser.
+
+To run and deploy:
+
+| Dependency | Used for | Cost and sign-up |
+|---|---|---|
+| [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/) | hosting the site, the API and the database | Cloudflare account; free tier is enough |
+| [Wrangler](https://developers.cloudflare.com/workers/wrangler/) | local development and deploys, run with `npx wrangler` | free |
+| [Node.js](https://nodejs.org/) | running Wrangler and the tests (`node --test`) | free |
+
+Loaded by the browser from third parties:
+
+| Dependency | Used for | Cost and sign-up |
+|---|---|---|
+| [Google Fonts](https://fonts.google.com/) | the Schibsted Grotesk font | free, no key |
+| [MapLibre GL JS](https://maplibre.org/) 5.24.0, from the unpkg CDN | drawing the map view; loaded only when the map is opened, with an integrity check | free, open source (BSD), no key |
+| [OpenFreeMap](https://openfreemap.org/) | map style, map data and fonts for the map view | free, no key; no uptime guarantee |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) | the map data behind OpenFreeMap | free; the credit line on the map must stay |
+
+If unpkg or OpenFreeMap can't be reached, the map view shows an error message and the rest of the site still works. Google Maps is only used for the "Open in Google Maps" links on stops; it needs no key.
 
 ## Deploy
 
@@ -88,9 +112,9 @@ Open http://localhost:8787.
 bash test/run.sh
 ```
 
-This first runs the unit tests (`test/dates.test.mjs`, `test/schedule.test.mjs`, `test/location.test.mjs`). It then uses its own throwaway local database and random keys, starts `wrangler dev`, runs the API tests in `test/api.test.mjs`, and runs them again with `VIEW_PUBLIC=true`.
+This first runs the unit tests (`test/dates.test.mjs`, `test/schedule.test.mjs`, `test/location.test.mjs`, `test/map-points.test.mjs`). It then uses its own throwaway local database and random keys, starts `wrangler dev`, runs the API tests in `test/api.test.mjs`, and runs them again with `VIEW_PUBLIC=true`.
 
-To run only the unit tests: `node --test test/dates.test.mjs test/schedule.test.mjs test/location.test.mjs`.
+To run only the unit tests: `node --test test/dates.test.mjs test/schedule.test.mjs test/location.test.mjs test/map-points.test.mjs`.
 
 To run one group of API tests: `TEST_PATTERN='^move:' bash test/run.sh`.
 
@@ -100,7 +124,7 @@ Do not point `test/api.test.mjs` at a real deployment. It overwrites the trip de
 
 ```
 src/worker.js            routing, auth, API, validation, audit log
-public/index.html        the only page: sign in, setup, timeline, board, dialogs
+public/index.html        the only page: sign in, setup, timeline, board, map, dialogs
 public/js/app.js         page startup, state, moves and undo
 public/js/api.js         key storage, API calls, DOM helpers
 public/js/schedule.js    computed stop times (shared with the Worker)
@@ -109,6 +133,8 @@ public/js/location.js    reads coordinates from text or a Maps link
 public/js/ui.js          icons, escaping, toast
 public/js/timeline.js    timeline view
 public/js/board.js       board view: drag and move menu
+public/js/map.js         map view: loads MapLibre, draws pins, shows load errors
+public/js/map-points.js  picks which pins the map shows (no DOM)
 public/js/stop-dialog.js add/edit stop dialog
 public/js/day-dialog.js  day settings dialog
 public/js/setup.js       trip form (setup and trip settings)
