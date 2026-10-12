@@ -56,6 +56,7 @@
         <div class="vswitch" id="vswitch" role="group" aria-label="View">
           <button type="button" data-v="timeline" aria-pressed="true">Timeline</button>
           <button type="button" data-v="board" aria-pressed="false">Board</button>
+          <button type="button" data-v="map" aria-pressed="false">Map</button>
         </div>
       </header>
 
@@ -83,6 +84,12 @@
           <nav class="bd-jump" id="bd-jump" aria-label="Jump to column"></nav>
         </div>
         <div class="board" id="board"></div>
+      </main>
+
+      <main class="mp-view" id="mp-view" hidden>
+        <nav class="mp-nav" id="mp-nav" aria-label="Choose a day"></nav>
+        <p class="error" id="mp-error" role="alert" hidden></p>
+        <div class="mp-map" id="mp-map"></div>
       </main>
     </div>
   </div>

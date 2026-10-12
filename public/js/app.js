@@ -6,6 +6,7 @@ import { schedule } from "./schedule.js";
 import { ico, plural, clashText, dayColor, toast } from "./ui.js";
 import { initTimeline } from "./timeline.js";
 import { initBoard } from "./board.js";
+import { initMap } from "./map.js";
 import { renderTripForm } from "./setup.js";
 import { initStopDialog } from "./stop-dialog.js";
 import { initDayDialog } from "./day-dialog.js";
@@ -21,7 +22,7 @@ let canViewPublic = false; // true once the itinerary loaded without a key (VIEW
 let landed = null;         // stop id to flash on the board's next render
 let started = false;       // the #board hash is applied on the first render only
 const openSet = new Set(); // expanded timeline cards
-const scrollMem = { timeline: 0, board: 0 };
+const scrollMem = { timeline: 0, board: 0, map: 0 };
 
 /* ---------- model helpers ---------- */
 const dayByDate = (date) => model.days.find((d) => d.date === date);
@@ -179,10 +180,12 @@ const ctx = {
 };
 const timeline = initTimeline(ctx);
 const board = initBoard(ctx);
+const mapView = initMap(ctx);
 
 function renderAll() {
   timeline.render();
   board.render();
+  mapView.render();
 }
 
 function setView(v) {
@@ -192,11 +195,14 @@ function setView(v) {
   app.dataset.view = v;
   $("tl-view").hidden = v !== "timeline";
   $("bd-view").hidden = v !== "board";
+  $("mp-view").hidden = v !== "map";
   $("vswitch").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === v));
   board.closeMenu(false);
   try { history.replaceState(null, "", "#" + v); } catch (e) { /* ignore */ }
   window.scrollTo(0, scrollMem[v] || 0);
-  if (v === "timeline") timeline.spy(); else board.renderJump();
+  if (v === "timeline") timeline.spy();
+  else if (v === "board") board.renderJump();
+  else mapView.render();
 }
 
 function goBoard(col) {
@@ -214,6 +220,7 @@ function showInTimeline(id) {
 
 $("vswitch").querySelector('[data-v="timeline"]').innerHTML = ico("list", 18) + "Timeline";
 $("vswitch").querySelector('[data-v="board"]').innerHTML = ico("board", 18) + "Board";
+$("vswitch").querySelector('[data-v="map"]').innerHTML = ico("pin", 18) + "Map";
 $("vswitch").addEventListener("click", (e) => { const b = e.target.closest("[data-v]"); if (b) setView(b.dataset.v); });
 
 /* ---------- screens ---------- */
@@ -266,7 +273,7 @@ function showTrip() {
   show("trip-section");
   if (!started) {
     started = true;
-    if (location.hash === "#board") setView("board");
+    if (location.hash === "#board" || location.hash === "#map") setView(location.hash.slice(1));
   }
   timeline.spy();
 }
