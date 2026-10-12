@@ -1,20 +1,21 @@
-// Map view: a button per day plus "Entire trip", then an OpenStreetMap map
-// with a pin per location. Leaflet loads from a CDN the first time the map
-// is shown, so the other views don't wait for it.
+// Map view: a button per day plus "Entire trip", then a map with a pin per
+// location. MapLibre loads from a CDN the first time the map is shown, so
+// the other views don't wait for it.
 import { esc } from "./ui.js";
 import { showError } from "./api.js";
 import { mapPoints } from "./map-points.js";
 
-const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/";
-const LEAFLET_CSS_SRI = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
-const LEAFLET_JS_SRI = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
-// OpenStreetMap's free tiles need no key, but the credit line must stay.
-const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+const MAPLIBRE = "https://unpkg.com/maplibre-gl@5.24.0/dist/";
+const MAPLIBRE_CSS_SRI = "sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK";
+const MAPLIBRE_JS_SRI = "sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp";
+// OpenFreeMap needs no key. This style labels places in English (or Latin
+// letters) with the local name next to it, and adds its own credit line.
+const STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const PIN = "#2F55A4"; // --d1 in style.css
-const WORLD = { center: [20, 0], zoom: 2 };
+const WORLD = { center: [0, 20], zoom: 1 };
 
 const LOAD_FAILED = "The map could not be loaded. Check your internet connection, then reload the page.";
+const START_FAILED = "The map could not start. Your browser may not support it; try another browser.";
 const TILES_FAILED = "Some parts of the map could not be loaded. The pins are still in the right places.";
 const DRAW_FAILED = "The map could not show the locations. Reload the page to try again.";
 
@@ -28,21 +29,21 @@ function addTag(tag, attrs) {
   });
 }
 
-let leaflet = null; // promise for window.L, shared by every render
-function loadLeaflet() {
-  if (!leaflet) {
-    leaflet = Promise.all([
-      addTag("link", { rel: "stylesheet", href: LEAFLET + "leaflet.css", integrity: LEAFLET_CSS_SRI }),
-      addTag("script", { src: LEAFLET + "leaflet.js", integrity: LEAFLET_JS_SRI })
+let lib = null; // promise for window.maplibregl, shared by every render
+function loadMapLibre() {
+  if (!lib) {
+    lib = Promise.all([
+      addTag("link", { rel: "stylesheet", href: MAPLIBRE + "maplibre-gl.css", integrity: MAPLIBRE_CSS_SRI }),
+      addTag("script", { src: MAPLIBRE + "maplibre-gl.js", integrity: MAPLIBRE_JS_SRI })
     ]).then(() => {
-      if (!window.L) throw new Error("Leaflet loaded but window.L is missing");
-      return window.L;
+      if (!window.maplibregl) throw new Error("MapLibre loaded but window.maplibregl is missing");
+      return window.maplibregl;
     }).catch((e) => {
-      leaflet = null; // let the next render try again
+      lib = null; // let the next render try again
       throw e;
     });
   }
-  return leaflet;
+  return lib;
 }
 
 // ctx is built in app.js. Returns { render }.
@@ -51,7 +52,7 @@ export function initMap(ctx) {
   const errEl = document.getElementById("mp-error");
   const mapEl = document.getElementById("mp-map");
   let which = null; // a date, or "all"
-  let map = null, pins = null, seq = 0;
+  let map = null, markers = [], seq = 0;
 
   const days = () => ctx.model().days;
 
@@ -60,33 +61,34 @@ export function initMap(ctx) {
     return btn("all", "Entire trip", "var(--ink)") + list.map((d) => btn(d.date, `Day ${d.n}, ${d.short}`, d.color)).join("");
   }
 
-  function createMap(L) {
-    map = L.map(mapEl);
-    let tileWarned = false;
-    L.tileLayer(TILES, { maxZoom: 19, attribution: CREDIT })
-      .on("tileerror", (e) => {
-        if (tileWarned) return; // one warning is enough; an outage fails every tile
-        tileWarned = true;
-        console.warn("[map] A map tile failed to load (later tile errors are not logged):", e.tile && e.tile.src);
-        showError(errEl, TILES_FAILED);
-      })
-      .addTo(map);
-    pins = L.featureGroup().addTo(map);
+  function createMap(ml) {
+    map = new ml.Map({ container: mapEl, style: STYLE, center: WORLD.center, zoom: WORLD.zoom });
+    map.addControl(new ml.NavigationControl({ showCompass: false }), "top-left");
+    let warned = false;
+    // Style, tile and font failures all arrive here.
+    map.on("error", (e) => {
+      if (warned) return; // one warning is enough; an outage fails every tile
+      warned = true;
+      const err = e.error || e;
+      console.warn("[map] Part of the map failed to load (later errors are not logged):", err.message || String(err));
+      showError(errEl, TILES_FAILED);
+    });
   }
 
-  function draw(L, list) {
-    map.invalidateSize(); // the map box may have been hidden since the last draw
-    pins.clearLayers();
+  function draw(ml, list) {
+    map.resize(); // the map box may have been hidden since the last draw
+    markers.forEach((m) => m.remove());
     const points = mapPoints(list, which);
-    points.forEach((p) => {
-      L.circleMarker([p.lat, p.lng], { radius: 9, color: "#fff", weight: 2, fillColor: PIN, fillOpacity: 1 })
-        .bindPopup(p.labels.map(esc).join("<br>"))
-        .addTo(pins);
-    });
+    markers = points.map((p) => new ml.Marker({ color: PIN })
+      .setLngLat([p.lng, p.lat])
+      .setPopup(new ml.Popup({ offset: 25 }).setHTML(p.labels.map(esc).join("<br>")))
+      .addTo(map));
     // A day without pins shows the whole trip, or the world if nothing has a location.
     const frame = points.length ? points : mapPoints(list, "all");
-    if (frame.length) map.fitBounds(L.latLngBounds(frame.map((p) => [p.lat, p.lng])), { padding: [32, 32], maxZoom: 15 });
-    else map.setView(WORLD.center, WORLD.zoom);
+    if (!frame.length) { map.jumpTo(WORLD); return; }
+    const bounds = new ml.LngLatBounds();
+    frame.forEach((p) => bounds.extend([p.lng, p.lat]));
+    map.fitBounds(bounds, { padding: 48, maxZoom: 15 });
   }
 
   async function render() {
@@ -96,18 +98,26 @@ export function initMap(ctx) {
     if (which !== "all" && !list.some((d) => d.date === which)) which = list.length ? list[0].date : "all";
     nav.innerHTML = navHTML(list);
     showError(errEl, "");
-    let L;
+    let ml;
     try {
-      L = await loadLeaflet();
+      ml = await loadMapLibre();
     } catch (e) {
-      console.error("[map] Leaflet failed to load:", e);
+      console.error("[map] MapLibre failed to load:", e);
       if (run === seq) showError(errEl, LOAD_FAILED);
       return;
     }
     if (run !== seq) return; // a newer render has taken over
+    if (!map) {
+      try {
+        createMap(ml);
+      } catch (e) {
+        console.error("[map] Could not start the map (WebGL may be unavailable):", e);
+        showError(errEl, START_FAILED);
+        return;
+      }
+    }
     try {
-      if (!map) createMap(L);
-      draw(L, list);
+      draw(ml, list);
     } catch (e) {
       console.error("[map] Could not draw the map for", which, e);
       showError(errEl, DRAW_FAILED);
