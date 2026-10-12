@@ -715,6 +715,21 @@ function apiDocs(origin) {
 Base URL: ${origin}
 All responses are JSON except this page (GET /api), which is plain text.
 
+HOW THE ITINERARY WORKS
+-----------------------
+A trip has a start and end date. Each date is a "day" with optional
+settings (title, start time, start place, end place).
+
+Stops belong to a day, in order, or to "Ideas" (no date). Stop start
+times are NOT stored. They are worked out from:
+  - the day's start_time (default 09:00) for the first stop,
+  - each stop's duration_min,
+  - rough travel time between stops (from lat/lng; 15 min if unknown),
+  - after_time (earliest start) and fixed_time (a start that never moves).
+If a fixed_time can't be reached in time, the stop shows as late
+("clashes"). To change when something happens, change the order,
+durations, after_time or fixed_time.
+
 AUTHENTICATION
 --------------
 Send your key in every request (except GET /api):
@@ -728,29 +743,57 @@ public viewing. Writes and the audit log always need a key.
 
 ENDPOINTS
 ---------
-GET    /api                 This text. No auth.
-GET    /api/whoami          -> {"name": "<key name>"}
-GET    /api/itinerary       -> {"trip": {...}, "items": [item, ...]}
-                            Items sorted by date, then start_time (items with
-                            no start_time first in their day), then id.
-PUT    /api/trip            Update trip details (partial body allowed).
-                            -> the updated trip object
-POST   /api/items           Create an item. -> 201 with the created item
-PUT    /api/items/:id       Update an item (partial body allowed).
-                            -> the updated item. 404 if missing.
-DELETE /api/items/:id       Delete an item. -> {"deleted": <id>}. 404 if missing.
-GET    /api/audit?limit=50  Recent changes, newest first.
-                            limit: positive integer, default ${AUDIT_DEFAULT_LIMIT}, max ${AUDIT_MAX_LIMIT}.
-                            -> {"entries": [{"id","ts","actor","action",
-                                "item_id","before","after"}]}
-                            action is one of: create, update, delete, update_trip.
-                            before/after are full row snapshots (or null).
+GET    /api                    This text. No auth.
+GET    /api/whoami             -> {"name": "<key name>"}
+GET    /api/itinerary          -> {"trip": {...}, "days": [day, ...], "ideas": [stop, ...]}
+                               days lists every date from start_date to end_date.
+PUT    /api/trip               Update trip details (partial body allowed). -> trip
+PUT    /api/days/:date         Create or update one day's settings (partial body
+                               allowed). :date is YYYY-MM-DD within the trip. -> day
+POST   /api/stops              Create a stop. -> 201 with the stop.
+                               No "date" (or null) puts it in Ideas.
+                               It is added at the end of its day or of Ideas.
+PUT    /api/stops/:id          Update a stop (partial body allowed). -> stop
+                               If "date" changes, the stop goes to the end of the
+                               new day. 404 if missing.
+POST   /api/stops/:id/move     Reorder a stop or move it to another day or Ideas.
+                               Body: {"date": "YYYY-MM-DD" or null, "index": n}
+                               index is the stop's new position in that column,
+                               0 = first. Larger numbers mean last.
+                               Moving to Ideas sets status "idea". Moving out of
+                               Ideas sets status "planned". -> stop
+DELETE /api/stops/:id          Delete a stop. -> {"deleted": <id>}. 404 if missing.
+GET    /api/audit?limit=50     Recent changes, newest first.
+                               limit: positive integer, default ${AUDIT_DEFAULT_LIMIT}, max ${AUDIT_MAX_LIMIT}.
+                               -> {"entries": [{"id","ts","actor","action",
+                                   "item_id","before","after"}]}
+                               action: create, update, delete, move, update_trip, update_day.
+                               item_id is the stop id (null for trip and day changes).
+                               before/after are full row snapshots (or null).
 
 OBJECTS
 -------
-trip: {"name", "start_date", "end_date", "timezone", "updated_at", "updated_by"}
-item: {"id", "date", "start_time", "end_time", "title", "location", "notes",
-       "link", "created_at", "created_by", "updated_at", "updated_by"}
+trip: {"name", "start_date", "end_date", "timezone", "travellers",
+       "updated_at", "updated_by"}
+
+stop: {"id", "date", "position", "title", "area", "kind", "duration_min",
+       "status", "fixed_time", "after_time", "stub", "booking_ref", "notes",
+       "link", "lat", "lng", "created_at", "created_by", "updated_at", "updated_by"}
+       position is the order within its day or Ideas, 0 = first.
+
+day (in GET /api/itinerary):
+  {"date", "n", "title", "start_time", "start_place", "start_lat", "start_lng",
+   "end_place", "end_lat", "end_lng", "updated_at", "updated_by",
+   "schedule": {
+     "stops": [stop + {"start", "end", "leg", "free_min", "late_min"}],
+     "start_leg", "leave_at", "back_leg", "back_at", "total_min",
+     "clashes": [{"id", "title", "late_min"}]
+   }}
+  n is the day number (1 = first day). start/end/leave_at/back_at are HH:MM.
+  leg is the travel before a stop: {"mode": "walk"|"taxi"|"train"|"any",
+  "min", "text"}, null for the first stop. start_leg/back_leg are the legs
+  from start_place and to end_place (null if those have no lat/lng).
+
 Fields that are not set are null. Timestamps are ISO 8601 UTC strings.
 
 FIELDS AND VALIDATION
@@ -761,25 +804,43 @@ Strings are trimmed. An empty string for an optional field sets it to null.
 Trip fields (PUT /api/trip):
   name        string, max ${MAX_LENGTHS.name} chars
   start_date  YYYY-MM-DD, a real calendar date
-  end_date    YYYY-MM-DD, must be on or after start_date
+  end_date    YYYY-MM-DD, on or after start_date. At most ${MAX_DAYS} days in total.
   timezone    IANA time zone name, e.g. "Asia/Singapore", "Europe/London", "UTC"
+  travellers  whole number 1 to 99, or null
+  Changing the dates is rejected if any stop would fall outside them.
 
-Item fields (POST /api/items, PUT /api/items/:id):
-  date        REQUIRED on create. YYYY-MM-DD, a real calendar date. Cannot be null.
-  title       REQUIRED on create. Non-empty string, max ${MAX_LENGTHS.title} chars. Cannot be null.
-  start_time  HH:MM, 24-hour (e.g. "09:30")
-  end_time    HH:MM, 24-hour. Must be after start_time when both are set
-              (on update, checked against the stored values too).
-  location    string, max ${MAX_LENGTHS.location} chars
-  notes       string, max ${MAX_LENGTHS.notes} chars
-  link        http:// or https:// URL, max ${MAX_LENGTHS.link} chars
+Day fields (PUT /api/days/:date):
+  title        string, max ${MAX_LENGTHS.title} chars
+  start_time   HH:MM, 24-hour. Cannot be null. Default 09:00.
+  start_place  string, max ${MAX_LENGTHS.start_place} chars (e.g. "Hotel")
+  start_lat, start_lng   numbers; set both or neither
+  end_place    string, max ${MAX_LENGTHS.end_place} chars
+  end_lat, end_lng       numbers; set both or neither
+
+Stop fields (POST /api/stops, PUT /api/stops/:id):
+  title        REQUIRED on create. Non-empty string, max ${MAX_LENGTHS.title} chars.
+  date         YYYY-MM-DD within the trip dates, or null for Ideas.
+  status       one of: ${STATUSES.join(', ')}. Default "planned" (or "idea" with no date).
+               "idea" is used exactly when date is null.
+  kind         one of: ${KINDS.join(', ')}. Default "sight". Sets the icon.
+  duration_min whole number 5 to 1440. Default 60.
+  fixed_time   HH:MM. A start time that never moves (train, restaurant booking).
+  after_time   HH:MM. Earliest start (e.g. lunch not before 11:30).
+  area         string, max ${MAX_LENGTHS.area} chars (e.g. "Higashiyama")
+  stub         string, max ${MAX_LENGTHS.stub} chars. Short booking label ("Car 8").
+  booking_ref  string, max ${MAX_LENGTHS.booking_ref} chars. Full booking details.
+  notes        string, max ${MAX_LENGTHS.notes} chars
+  link         http:// or https:// URL, max ${MAX_LENGTHS.link} chars
+  lat          number -90 to 90. Set lat and lng together, or neither.
+  lng          number -180 to 180. Used for travel estimates.
+  kind, duration_min and status cannot be set to null.
 
 ERRORS
 ------
 Errors are JSON: {"error": "<message>"}
   400  validation error (the message names the field and expected format)
   401  missing or invalid key
-  404  unknown item or route
+  404  unknown stop or route
   405  wrong HTTP method for this path
   500  server error or misconfiguration
 
@@ -788,18 +849,30 @@ EXAMPLES
 curl -H "Authorization: Bearer $KEY" ${origin}/api/itinerary
 
 curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
-  -d '{"name":"Japan 2025","start_date":"2025-04-01","end_date":"2025-04-10","timezone":"Asia/Tokyo"}' \\
+  -d '{"name":"Kyoto in autumn","start_date":"2026-11-20","end_date":"2026-11-22","timezone":"Asia/Tokyo","travellers":2}' \\
   ${origin}/api/trip
 
+curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{"title":"Arashiyama","start_time":"08:00","start_place":"Hotel","start_lat":35.0089,"start_lng":135.77}' \\
+  ${origin}/api/days/2026-11-21
+
 curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
-  -d '{"date":"2025-04-02","start_time":"09:00","end_time":"11:00","title":"Senso-ji temple","location":"Asakusa"}' \\
-  ${origin}/api/items
+  -d '{"date":"2026-11-21","title":"Tenryu-ji garden","kind":"sight","duration_min":60,"lat":35.0156,"lng":135.6737}' \\
+  ${origin}/api/stops
+
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{"date":"2026-11-21","title":"Yudofu lunch","kind":"food","status":"booked","fixed_time":"11:30","stub":"Table for 2"}' \\
+  ${origin}/api/stops
+
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  -d '{"date":null,"index":0}' \\
+  ${origin}/api/stops/1/move
 
 curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
   -d '{"notes":"Go early to avoid crowds"}' \\
-  ${origin}/api/items/1
+  ${origin}/api/stops/1
 
-curl -X DELETE -H "Authorization: Bearer $KEY" ${origin}/api/items/1
+curl -X DELETE -H "Authorization: Bearer $KEY" ${origin}/api/stops/1
 
 curl -H "Authorization: Bearer $KEY" "${origin}/api/audit?limit=20"
 `;
