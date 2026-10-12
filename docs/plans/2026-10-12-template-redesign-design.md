@@ -108,6 +108,7 @@ All writes need a key. Every change is logged with the key name.
 - `status: "idea"` with a date, or a non-idea status without a date, is rejected. The message points to `/move`.
 - Move `index` is clamped to the column length. Missing stop returns 404. Date outside the trip returns 400.
 - `PUT /api/trip` that would leave stops outside the new date range is rejected, with a message giving the count.
+- Trips can be at most 366 days long.
 - Moves and renumbering run in one D1 batch.
 
 **Not enforced on the server**
@@ -122,6 +123,8 @@ Plain HTML, CSS and JavaScript (ES modules), no build step. The template's marku
 | `public/index.html` | Template layout (header, view switch, timeline, board, menu, toast), plus sign-in, setup, dialogs, history panel |
 | `public/style.css` | Template CSS as the base, with existing dialog, form and sign-in styles moved onto its colours and font |
 | `public/js/schedule.js` | New, shared with the Worker. `travel()`, `schedule()`, time helpers. Pure functions, no DOM. |
+| `public/js/ui.js` | Shared icons, escaping, toast |
+| `public/js/location.js` | Pure coordinate / Maps URL parser |
 | `public/js/api.js` | Kept: key storage, fetch, errors |
 | `public/js/dates.js` | Kept, trimmed: trip day list, date labels |
 | `public/js/app.js` | State, load, render, optimistic writes, toast and undo |
