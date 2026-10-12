@@ -225,6 +225,10 @@ body.dragging,body.dragging *{cursor:grabbing!important;user-select:none;-webkit
   .app[data-view="map"] .apphead,.mp-view{max-width:1100px;margin:0 auto}
   .mp-view{padding-bottom:32px}
   .mp-map{height:max(360px, calc(100dvh - 260px))}
+  /* A mouse wheel can't scroll a row sideways, so show the scrollbar */
+  .mp-nav{scrollbar-width:thin;padding-bottom:8px}
+  .mp-nav::-webkit-scrollbar{display:block;height:8px}
+  .mp-nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
   .apphead{padding-top:32px;padding-bottom:16px}
   .trip h1{font-size:30px}
   .vswitch{position:static;transform:none;background:var(--surface);border:1px solid var(--line);box-shadow:none}
