@@ -39,6 +39,8 @@ If unpkg or OpenFreeMap can't be reached, the map view shows an error message an
 
 You need Node.js and a Cloudflare account. All commands use `npx wrangler`, so you don't need a global install.
 
+To do every step below in one go, run `bash deploy.sh`. It is safe to run again later to redeploy. It also asks for the Worker name (which sets the `workers.dev` URL) and an optional custom domain. A custom domain must be active in your Cloudflare account; Cloudflare creates its DNS record and certificate. The steps it runs are:
+
 1. Fork or clone this repo, then log in:
    ```sh
    npx wrangler login
