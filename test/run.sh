@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the unit tests, then the API integration tests end to end:
-#   0. runs the date helper unit tests (test/dates.test.mjs)
+#   0. runs the unit tests (dates, schedule, location)
 #   1. generates random test keys into a temporary env file
 #   2. resets a separate local D1 (.wrangler/test-state) and applies schema.sql
 #   3. starts `wrangler dev` on a free port and runs test/api.test.mjs
@@ -8,6 +8,7 @@
 #   5. stops wrangler and removes temporary files
 #
 # Usage (from anywhere):  bash test/run.sh
+# Only some API tests:    TEST_PATTERN='^stop:' bash test/run.sh
 # Your own .dev.vars and .wrangler/state are not touched.
 
 set -euo pipefail
@@ -49,7 +50,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "==> Running unit tests"
-node --test --test-reporter=spec test/dates.test.mjs
+node --test --test-reporter=spec test/dates.test.mjs test/schedule.test.mjs test/location.test.mjs
 KEYS_JSON="{\"alice\":\"$(rand_key)\",\"bob\":\"$(rand_key)\"}"
 printf 'API_KEYS=%s\n' "$KEYS_JSON" > "$ENV_FILE"
 
@@ -85,7 +86,7 @@ run_pass() {
 
   local status=0
   BASE_URL="http://127.0.0.1:$port" TEST_API_KEYS="$KEYS_JSON" TEST_VIEW_PUBLIC="$view_public" \
-    node --test --test-reporter=spec test/api.test.mjs || status=$?
+    node --test --test-reporter=spec ${TEST_PATTERN:+"--test-name-pattern=$TEST_PATTERN"} test/api.test.mjs || status=$?
   stop_wrangler
   if [ "$status" -ne 0 ]; then
     echo "==> Tests FAILED (VIEW_PUBLIC=$view_public). wrangler log:"
