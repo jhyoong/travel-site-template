@@ -98,7 +98,7 @@ To run only the unit tests: `node --test test/dates.test.mjs test/schedule.test.
 
 To run one group of API tests: `TEST_PATTERN='^move:' bash test/run.sh`.
 
-The page itself has no automated tests. Use the manual checklist in `docs/plans/2026-10-12-template-redesign.md` (Task 21).
+The page itself has no automated tests. Use the manual checklist in `docs/manual-checklist.md`.
 
 Do not point `test/api.test.mjs` at a real deployment. It overwrites the trip details.
 
