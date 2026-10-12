@@ -292,7 +292,7 @@ function checkIdeaRule(row) {
     throw new HttpError(400, 'A stop with no date is an idea, so "status" must be "idea". To put it on a day, send a "date" (or use POST /api/stops/:id/move).');
   }
   if (row.date != null && row.status === 'idea') {
-    throw new HttpError(400, 'Status "idea" is only for stops with no date. To move it to Ideas, send "date": null with "status": "idea" (or use POST /api/stops/:id/move with "date": null).');
+    throw new HttpError(400, 'Status "idea" is only for stops with no date. To put it on a day, also send a "status" such as "planned" (or use POST /api/stops/:id/move).');
   }
 }
 
@@ -749,19 +749,27 @@ GET    /api/itinerary          -> {"trip": {...}, "days": [day, ...], "ideas": [
                                days lists every date from start_date to end_date.
 PUT    /api/trip               Update trip details (partial body allowed). -> trip
 PUT    /api/days/:date         Create or update one day's settings (partial body
-                               allowed). :date is YYYY-MM-DD within the trip. -> day
+                               allowed). :date is YYYY-MM-DD within the trip.
+                               -> the day's settings (no "n" or "schedule").
 POST   /api/stops              Create a stop. -> 201 with the stop.
                                No "date" (or null) puts it in Ideas.
                                It is added at the end of its day or of Ideas.
 PUT    /api/stops/:id          Update a stop (partial body allowed). -> stop
                                If "date" changes, the stop goes to the end of the
                                new day. 404 if missing.
+                               PUT does not change status for you. To put an
+                               idea on a day, send "date" and a non-idea "status"
+                               (e.g. "planned"). To send a stop to Ideas, send
+                               "date": null and "status": "idea". The move
+                               endpoint below does this for you.
 POST   /api/stops/:id/move     Reorder a stop or move it to another day or Ideas.
                                Body: {"date": "YYYY-MM-DD" or null, "index": n}
+                               Both "date" and "index" are required.
                                index is the stop's new position in that column,
                                0 = first. Larger numbers mean last.
                                Moving to Ideas sets status "idea". Moving out of
-                               Ideas sets status "planned". -> stop
+                               Ideas sets status "planned", so a "booked" stop
+                               sent to Ideas and back comes back "planned". -> stop
 DELETE /api/stops/:id          Delete a stop. -> {"deleted": <id>}. 404 if missing.
 GET    /api/audit?limit=50     Recent changes, newest first.
                                limit: positive integer, default ${AUDIT_DEFAULT_LIMIT}, max ${AUDIT_MAX_LIMIT}.
@@ -833,7 +841,7 @@ Stop fields (POST /api/stops, PUT /api/stops/:id):
   link         http:// or https:// URL, max ${MAX_LENGTHS.link} chars
   lat          number -90 to 90. Set lat and lng together, or neither.
   lng          number -180 to 180. Used for travel estimates.
-  kind, duration_min and status cannot be set to null.
+  title, kind, duration_min and status cannot be set to null.
 
 ERRORS
 ------
