@@ -44,13 +44,8 @@ export function initDayDialog(opts) {
     if (busy) return;
     showError(error, "");
     let start, end;
-    try {
-      start = readLocation(f.start_location, "Start location");
-      end = readLocation(f.end_location, "End location");
-    } catch (e) {
-      showError(error, e.message);
-      return;
-    }
+    try { start = readLocation(f.start_location, "Start location"); } catch (e) { showError(error, e.message); f.start_location.focus(); return; }
+    try { end = readLocation(f.end_location, "End location"); } catch (e) { showError(error, e.message); f.end_location.focus(); return; }
     setBusy(true);
     try {
       await api("PUT", "/api/days/" + encodeURIComponent(day.date), {
@@ -73,6 +68,7 @@ export function initDayDialog(opts) {
     }
   });
 
+  // Don't let Esc close the dialog while a save is running.
   dialog.addEventListener("cancel", (ev) => { if (busy) ev.preventDefault(); });
   form.querySelector('[data-action="cancel"]').addEventListener("click", () => dialog.close());
 
