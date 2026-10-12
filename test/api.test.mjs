@@ -20,7 +20,7 @@
 // The tests overwrite the trip row and day settings, and delete the stops
 // they create. Never point them at a real deployment.
 
-import { test } from 'node:test';
+import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const BASE_URL = (process.env.BASE_URL || 'http://localhost:8787').replace(/\/+$/, '');
@@ -125,6 +125,12 @@ const PROTECTED = [
   ['GET', '/api/audit'],
 ];
 if (!VIEW_PUBLIC) PROTECTED.push(['GET', '/api/itinerary']);
+
+// Stops and days must fall within the trip dates, so set them before any test runs.
+before(async () => {
+  const res = await api('PUT', '/api/trip', { key: KEY_A, body: { name: 'Test Trip', ...TRIP } });
+  assert.equal(res.status, 200, res.text);
+});
 
 test('docs: GET /api returns plain-text docs without auth', async () => {
   const res = await api('GET', '/api');
@@ -239,7 +245,7 @@ test('routes: unknown routes give 404, wrong methods give 405', async () => {
   assertError(await api('DELETE', '/api/trip', { key: KEY_A }), 405);
 });
 
-test('stop: create in a day and in Ideas, with defaults and audit', async () => {
+test('stop: create in a day and in Ideas, with defaults and audit', async (t) => {
   const a = await createStop({ date: DAY1, title: '  Temple  ', area: 'Higashiyama', notes: '', lat: 35, lng: 135.78 });
   assert.deepEqual(Object.keys(a).sort(), STOP_KEYS);
   assert.equal(a.title, 'Temple');
@@ -254,6 +260,7 @@ test('stop: create in a day and in Ideas, with defaults and audit', async () => 
   assert.equal(b.created_by, NAME_B);
 
   const idea = await createStop({ title: 'Museum' });
+  t.after(() => cleanup([a.id, b.id, idea.id]));
   assert.equal(idea.date, null);
   assert.equal(idea.status, 'idea');
 
@@ -268,10 +275,9 @@ test('stop: create in a day and in Ideas, with defaults and audit', async () => 
   assert.ok(it.ideas.some((s) => s.id === idea.id));
   await assertPositions(DAY1);
   await assertPositions(null);
-  await cleanup([a.id, b.id, idea.id]);
 });
 
-test('stop: validation rules', async () => {
+test('stop: validation rules', async (t) => {
   const bad = async (body, pattern) => assertError(await api('POST', '/api/stops', { key: KEY_A, body }), 400, pattern);
   await bad({ date: DAY1 }, /"title" is required/);
   await bad({ title: '   ' }, /"title" is required/);
@@ -295,6 +301,7 @@ test('stop: validation rules', async () => {
   assertError(await api('POST', '/api/stops', { key: KEY_A, rawBody: '{bad json' }), 400, /JSON/);
 
   const s = await createStop({ date: DAY1, title: 'Check' });
+  t.after(() => cleanup([s.id]));
   const upd = (body) => api('PUT', `/api/stops/${s.id}`, { key: KEY_A, body });
   assertError(await upd({ title: '' }), 400, /"title" is required/);
   assertError(await upd({ kind: null }), 400, /"kind" cannot be null/);
@@ -306,13 +313,13 @@ test('stop: validation rules', async () => {
   assertError(await api('PUT', '/api/stops/999999999', { key: KEY_A, body: { title: 'x' } }), 404, /not found/);
   assertError(await api('DELETE', '/api/stops/999999999', { key: KEY_A }), 404, /not found/);
   assertError(await api('DELETE', '/api/stops/abc', { key: KEY_A }), 400, /positive integer/);
-  await cleanup([s.id]);
 });
 
-test('stop: update, date change and delete keep positions in order', async () => {
+test('stop: update, date change and delete keep positions in order', async (t) => {
   const a = await createStop({ date: DAY1, title: 'A' });
   const b = await createStop({ date: DAY1, title: 'B' });
   const c = await createStop({ date: DAY1, title: 'C' });
+  t.after(() => cleanup([a.id, b.id, c.id]));
 
   const upd = await api('PUT', `/api/stops/${b.id}`, {
     key: KEY_B, body: { notes: 'Go early', status: 'booked', stub: 'Table for 2' },
@@ -360,16 +367,16 @@ test('stop: update, date change and delete keep positions in order', async () =>
 
   assertError(await api('PUT', `/api/stops/${a.id}`, { key: KEY_A, body: { title: 'x' } }), 404);
   assert.equal((await latestAudit()).id, entry.id, 'failed writes must not add audit entries');
-  await cleanup([b.id, c.id]);
 });
 
-test('move: reorder within a day', async () => {
+test('move: reorder within a day', async (t) => {
   const base = (await columnIds(DAY2)).length;
   const a = await createStop({ date: DAY2, title: 'A' });
   const b = await createStop({ date: DAY2, title: 'B' });
   const c = await createStop({ date: DAY2, title: 'C' });
   const d = await createStop({ date: DAY2, title: 'D' });
   const mine = [a.id, b.id, c.id, d.id];
+  t.after(() => cleanup(mine));
   const order = async () => (await columnIds(DAY2)).filter((id) => mine.includes(id));
 
   let r = await move(a.id, DAY2, base + 2);
@@ -397,13 +404,13 @@ test('move: reorder within a day', async () => {
   r = await move(c.id, DAY2, base + 3);
   assert.equal(r.status, 200, r.text);
   assert.equal((await latestAudit()).id, entry.id);
-  await cleanup(mine);
 });
 
-test('move: across days, to and from Ideas', async () => {
+test('move: across days, to and from Ideas', async (t) => {
   const a = await createStop({ date: DAY1, title: 'A' });
   const b = await createStop({ date: DAY1, title: 'B', status: 'booked' });
   const idea = await createStop({ title: 'I' });
+  t.after(() => cleanup([a.id, b.id, idea.id]));
 
   let r = await move(a.id, DAY2, 0);
   assert.equal(r.status, 200, r.text);
@@ -430,11 +437,11 @@ test('move: across days, to and from Ideas', async () => {
   assert.equal(r.data.position, 1);
   await assertPositions(DAY1);
   await assertPositions(null);
-  await cleanup([a.id, b.id, idea.id]);
 });
 
-test('move: errors', async () => {
+test('move: errors', async (t) => {
   const s = await createStop({ date: DAY1, title: 'Mover' });
+  t.after(() => cleanup([s.id]));
   const post = (body) => api('POST', `/api/stops/${s.id}/move`, { key: KEY_A, body });
   assertError(await move(999999999, DAY1, 0), 404, /not found/);
   assertError(await post({ index: 0 }), 400, /"date" is required/);
@@ -444,7 +451,6 @@ test('move: errors', async () => {
   assertError(await post({ date: OUTSIDE, index: 0 }), 400, /outside the trip dates/);
   assertError(await post({ date: 'bad', index: 0 }), 400, /"date".*YYYY-MM-DD/);
   assertError(await post({ date: DAY1, index: 0, extra: 1 }), 400, /Unknown field.*extra/);
-  await cleanup([s.id]);
 });
 
 test('day: upsert, validation and audit', async () => {
@@ -492,7 +498,7 @@ test('day: upsert, validation and audit', async () => {
   await bad({ title: 'x' }, /YYYY-MM-DD/, '2099-02-30');
 });
 
-test('itinerary: returns computed times from schedule.js', async () => {
+test('itinerary: returns computed times from schedule.js', async (t) => {
   const reset = await api('PUT', `/api/days/${DAY4}`, {
     key: KEY_A,
     body: { start_time: '10:00', start_place: null, start_lat: null, start_lng: null, end_place: null, end_lat: null, end_lng: null },
@@ -501,6 +507,7 @@ test('itinerary: returns computed times from schedule.js', async () => {
   assert.equal((await columnIds(DAY4)).length, 0, `${DAY4} should start empty`);
   const a = await createStop({ date: DAY4, title: 'A', duration_min: 60 });
   const b = await createStop({ date: DAY4, title: 'B', duration_min: 30, fixed_time: '10:30', status: 'booked' });
+  t.after(() => cleanup([a.id, b.id]));
 
   const sc = (await getItinerary()).days.find((d) => d.date === DAY4).schedule;
   const [ra, rb] = sc.stops;
@@ -514,11 +521,11 @@ test('itinerary: returns computed times from schedule.js', async () => {
   assert.deepEqual(rb.leg, { mode: 'any', min: 15, text: 'About 15 min travel' });
   assert.deepEqual(sc.clashes, [{ id: b.id, title: 'B', late_min: 45 }]);
   assert.equal(sc.total_min, 90);
-  await cleanup([a.id, b.id]);
 });
 
-test('trip: shrinking dates past existing stops is rejected', async () => {
+test('trip: shrinking dates past existing stops is rejected', async (t) => {
   const s = await createStop({ date: LAST, title: 'Last day' });
+  t.after(() => cleanup([s.id]));
   assertError(await api('PUT', '/api/trip', { key: KEY_A, body: { end_date: '2099-01-09' } }), 400, /1 stop is on a date outside/);
   assertError(await api('PUT', '/api/trip', { key: KEY_A, body: { start_date: null } }), 400, /outside/);
   await cleanup([s.id]);
@@ -528,9 +535,10 @@ test('trip: shrinking dates past existing stops is rejected', async () => {
   assert.equal(restore.status, 200, restore.text);
 });
 
-test('audit: newest first, limit rules, parsed snapshots', async () => {
+test('audit: newest first, limit rules, parsed snapshots', async (t) => {
   const one = await createStop({ date: DAY1, title: 'audit one' });
   const two = await createStop({ date: DAY1, title: 'audit two' }, KEY_B);
+  t.after(() => cleanup([one.id, two.id]));
 
   const res = await api('GET', '/api/audit?limit=2', { key: KEY_A });
   assert.equal(res.status, 200);
@@ -556,5 +564,4 @@ test('audit: newest first, limit rules, parsed snapshots', async () => {
   for (const bad of ['0', '-1', '1.5', 'abc', '']) {
     assertError(await api('GET', `/api/audit?limit=${bad}`, { key: KEY_A }), 400, /limit.*positive integer/);
   }
-  await cleanup([one.id, two.id]);
 });
