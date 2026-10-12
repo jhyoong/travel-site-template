@@ -60,10 +60,10 @@ export function toast(msg, undo) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = "Undo";
-    b.onclick = () => { t.innerHTML = ""; t.classList.remove("show"); undo(); };
+    b.onclick = () => { b.onclick = null; b.disabled = true; t.classList.remove("show"); undo(); };
     t.appendChild(b);
   }
   t.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), undo ? 6000 : 3500);
+  toastTimer = setTimeout(() => { t.classList.remove("show"); const b = t.querySelector("button"); if (b) b.disabled = true; }, undo ? 6000 : 3500);
 }
