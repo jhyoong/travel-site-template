@@ -42,6 +42,10 @@ export function renderTripForm(container, opts) {
     list: ensureTimezoneList(), value: trip.timezone || browserTimezone(),
     placeholder: "Start typing, e.g. Tokyo"
   });
+  const travIn = el("input", {
+    name: "travellers", type: "number", min: 1, max: 99, step: 1,
+    value: trip.travellers || "", placeholder: "Optional"
+  });
 
   // Keep the end date on or after the start date, and fill it in
   // when the start date is picked first.
@@ -51,15 +55,15 @@ export function renderTripForm(container, opts) {
   });
 
   const error = el("p", { class: "error", role: "alert", hidden: true });
-  const submit = el("button", { type: "submit", text: opts.submitLabel });
+  const submit = el("button", { type: "submit", class: "btn btn-ink", text: opts.submitLabel });
   const form = el("form", { class: "trip-form" }, [
     field("Trip name", nameIn),
     el("div", { class: "row" }, [field("Start date", startIn), field("End date", endIn)]),
-    field("Timezone", tzIn),
+    el("div", { class: "row" }, [field("Timezone", tzIn), field("Travellers", travIn)]),
     error,
     el("div", { class: "actions" }, [
       submit,
-      opts.onCancel ? el("button", { type: "button", class: "secondary", text: "Cancel", onclick: opts.onCancel }) : null
+      opts.onCancel ? el("button", { type: "button", class: "btn", text: "Cancel", onclick: opts.onCancel }) : null
     ])
   ]);
 
@@ -74,7 +78,8 @@ export function renderTripForm(container, opts) {
         name: nameIn.value.trim(),
         start_date: startIn.value,
         end_date: endIn.value,
-        timezone: tzIn.value.trim()
+        timezone: tzIn.value.trim(),
+        travellers: travIn.value ? Number(travIn.value) : null
       });
       // Leave the button disabled: the form is replaced once the page reloads,
       // and a second click would only save the same trip again.

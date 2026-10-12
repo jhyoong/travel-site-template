@@ -1,16 +1,17 @@
 // The recent changes panel (#history-dialog in index.html).
 // Loads the audit log each time it is opened.
 import { api, el, clear, showError } from "./api.js";
-import { formatTimestamp } from "./dates.js";
+import { formatDay, formatTimestamp } from "./dates.js";
 
-const ACTIONS = { create: "added", update: "edited", "delete": "deleted", update_trip: "updated the trip" };
+const ACTIONS = { create: "added", update: "edited", "delete": "deleted", move: "moved" };
 
 function describe(entry) {
   const snap = entry.after || entry.before || {};
-  let subject = "";
-  if (entry.action === "update_trip") subject = snap.name ? " “" + snap.name + "”" : "";
-  else if (snap.title) subject = " “" + snap.title + "”";
-  return (ACTIONS[entry.action] || entry.action) + subject;
+  if (entry.action === "update_trip") return "updated the trip" + (snap.name ? " “" + snap.name + "”" : "");
+  if (entry.action === "update_day") return "updated " + formatDay(snap.date);
+  let text = (ACTIONS[entry.action] || entry.action) + (snap.title ? " “" + snap.title + "”" : "");
+  if (entry.action === "move") text += " to " + (snap.date ? formatDay(snap.date) : "Ideas");
+  return text;
 }
 
 // opts: { onAuthFailed() }. Returns { open() }.
