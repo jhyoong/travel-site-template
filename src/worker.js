@@ -1,31 +1,59 @@
 // Itinerary Worker: serves static pages from ./public and a JSON API under /api.
 // See GET /api for the API docs.
+import { schedule, DEFAULT_START } from '../public/js/schedule.js';
+import { tripDates, dayCount, MAX_DAYS } from '../public/js/dates.js';
 
-const ITEM_FIELDS = ['date', 'start_time', 'end_time', 'title', 'location', 'notes', 'link'];
-const TRIP_FIELDS = ['name', 'start_date', 'end_date', 'timezone'];
+const KINDS = ['train', 'hotel', 'food', 'sight', 'walk'];
+const STATUSES = ['booked', 'planned', 'suggested', 'idea'];
 
-const ITEM_COLUMNS = [
-  'id', 'date', 'start_time', 'end_time', 'title', 'location', 'notes', 'link',
-  'created_at', 'created_by', 'updated_at', 'updated_by',
+const TRIP_FIELDS = ['name', 'start_date', 'end_date', 'timezone', 'travellers'];
+const DAY_FIELDS = ['title', 'start_time', 'start_place', 'start_lat', 'start_lng', 'end_place', 'end_lat', 'end_lng'];
+const STOP_FIELDS = [
+  'date', 'title', 'area', 'kind', 'duration_min', 'status', 'fixed_time', 'after_time',
+  'stub', 'booking_ref', 'notes', 'link', 'lat', 'lng',
 ];
-const TRIP_COLUMNS = ['name', 'start_date', 'end_date', 'timezone', 'updated_at', 'updated_by'];
+
+const TRIP_COLUMNS = [...TRIP_FIELDS, 'updated_at', 'updated_by'];
+const DAY_COLUMNS = ['date', ...DAY_FIELDS, 'updated_at', 'updated_by'];
+const STOP_COLUMNS = ['id', 'position', ...STOP_FIELDS, 'created_at', 'created_by', 'updated_at', 'updated_by'];
 
 const MAX_LENGTHS = {
-  title: 200,
-  location: 300,
-  notes: 5000,
-  link: 2000,
   name: 200,
   timezone: 64,
+  title: 200,
+  area: 100,
+  stub: 40,
+  booking_ref: 500,
+  notes: 5000,
+  link: 2000,
+  start_place: 200,
+  end_place: 200,
 };
+
+const LAT = { min: -90, max: 90 };
+const LNG = { min: -180, max: 180 };
+const NUMBER_RULES = {
+  travellers: { min: 1, max: 99, integer: true },
+  duration_min: { min: 5, max: 1440, integer: true },
+  lat: LAT,
+  lng: LNG,
+  start_lat: LAT,
+  start_lng: LNG,
+  end_lat: LAT,
+  end_lng: LNG,
+};
+const DATE_FIELDS = ['date', 'start_date', 'end_date'];
+const TIME_FIELDS = ['start_time', 'fixed_time', 'after_time'];
 
 const MAX_BODY_BYTES = 64 * 1024;
 const AUDIT_DEFAULT_LIMIT = 50;
 const AUDIT_MAX_LIMIT = 200;
 
 // SQL expressions that build a full-row JSON snapshot.
-const ITEM_JSON = `json_object(${ITEM_COLUMNS.map((c) => `'${c}', ${c}`).join(', ')})`;
-const TRIP_JSON = `json_object(${TRIP_COLUMNS.map((c) => `'${c}', ${c}`).join(', ')})`;
+const jsonObject = (cols) => `json_object(${cols.map((c) => `'${c}', ${c}`).join(', ')})`;
+const TRIP_JSON = jsonObject(TRIP_COLUMNS);
+const DAY_JSON = jsonObject(DAY_COLUMNS);
+const STOP_JSON = jsonObject(STOP_COLUMNS);
 
 const API_HEADERS = {
   'Cache-Control': 'no-store',
@@ -188,81 +216,119 @@ function cleanString(field, value) {
   return v;
 }
 
-// Validates fields present in body. Returns an object with cleaned values.
-function validateItemFields(body, { isCreate }) {
-  checkUnknownFields(body, ITEM_FIELDS);
-  const out = {};
-  for (const field of ITEM_FIELDS) {
-    if (!(field in body)) continue;
-    out[field] = cleanString(field, body[field]);
+function cleanNumber(field, value) {
+  if (value === null) return null;
+  const rule = NUMBER_RULES[field];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new HttpError(400, `Field "${field}" must be a number or null.`);
   }
-  if (isCreate || 'date' in out) {
-    if (out.date == null) {
-      throw new HttpError(400, 'Field "date" is required, format YYYY-MM-DD (e.g. "2025-03-14").');
-    }
+  if (rule.integer && !Number.isInteger(value)) {
+    throw new HttpError(400, `Field "${field}" must be a whole number.`);
   }
-  if (out.date != null && !isRealDate(out.date)) {
-    throw new HttpError(400, `Field "date" must be a real calendar date in format YYYY-MM-DD (e.g. "2025-03-14"). Got "${out.date}".`);
+  if (value < rule.min || value > rule.max) {
+    throw new HttpError(400, `Field "${field}" must be between ${rule.min} and ${rule.max}. Got ${value}.`);
   }
-  if (isCreate || 'title' in out) {
-    if (out.title == null) {
-      throw new HttpError(400, 'Field "title" is required and must be a non-empty string.');
-    }
-  }
-  for (const f of ['start_time', 'end_time']) {
-    if (out[f] != null && !isTime(out[f])) {
-      throw new HttpError(400, `Field "${f}" must be a 24-hour time in format HH:MM (e.g. "09:30", "18:05"). Got "${out[f]}".`);
-    }
-  }
-  if (out.link != null && !isHttpUrl(out.link)) {
-    throw new HttpError(400, 'Field "link" must be a full http:// or https:// URL (e.g. "https://example.com").');
-  }
-  return out;
+  return value;
 }
 
-function checkTimeOrder(start, end) {
-  if (start != null && end != null && end <= start) {
-    throw new HttpError(400, `Field "end_time" (${end}) must be after "start_time" (${start}).`);
-  }
-}
-
-function validateTripFields(body) {
-  checkUnknownFields(body, TRIP_FIELDS);
+// Checks and cleans the fields present in body. Returns { field: value }.
+function cleanFields(body, allowed) {
+  checkUnknownFields(body, allowed);
   const out = {};
-  for (const field of TRIP_FIELDS) {
+  for (const field of allowed) {
     if (!(field in body)) continue;
-    out[field] = cleanString(field, body[field]);
-  }
-  for (const f of ['start_date', 'end_date']) {
-    if (out[f] != null && !isRealDate(out[f])) {
-      throw new HttpError(400, `Field "${f}" must be a real calendar date in format YYYY-MM-DD (e.g. "2025-03-14"). Got "${out[f]}".`);
+    const value = NUMBER_RULES[field] ? cleanNumber(field, body[field]) : cleanString(field, body[field]);
+    out[field] = value;
+    if (value == null) continue;
+    if (DATE_FIELDS.includes(field) && !isRealDate(value)) {
+      throw new HttpError(400, `Field "${field}" must be a real calendar date in format YYYY-MM-DD (e.g. "2025-03-14"). Got "${value}".`);
+    }
+    if (TIME_FIELDS.includes(field) && !isTime(value)) {
+      throw new HttpError(400, `Field "${field}" must be a 24-hour time in format HH:MM (e.g. "09:30", "18:05"). Got "${value}".`);
     }
   }
   if (out.timezone != null && !isTimezone(out.timezone)) {
     throw new HttpError(400, `Field "timezone" must be a valid IANA time zone name (e.g. "Asia/Singapore", "Europe/London", "UTC"). Got "${out.timezone}".`);
   }
+  if (out.link != null && !isHttpUrl(out.link)) {
+    throw new HttpError(400, 'Field "link" must be a full http:// or https:// URL (e.g. "https://example.com").');
+  }
+  if (out.kind != null && !KINDS.includes(out.kind)) {
+    throw new HttpError(400, `Field "kind" must be one of: ${KINDS.join(', ')}. Got "${out.kind}".`);
+  }
+  if (out.status != null && !STATUSES.includes(out.status)) {
+    throw new HttpError(400, `Field "status" must be one of: ${STATUSES.join(', ')}. Got "${out.status}".`);
+  }
   return out;
+}
+
+function requireSomeFields(fields, allowed) {
+  if (Object.keys(fields).length === 0) {
+    throw new HttpError(400, `Request body has no fields to update. Allowed fields: ${allowed.join(', ')}.`);
+  }
+}
+
+function requireTitle(fields) {
+  if (fields.title == null) {
+    throw new HttpError(400, 'Field "title" is required and must be a non-empty string.');
+  }
+}
+
+function rejectNulls(fields, names) {
+  for (const f of names) {
+    if (f in fields && fields[f] == null) throw new HttpError(400, `Field "${f}" cannot be null.`);
+  }
+}
+
+function checkPair(row, latKey, lngKey) {
+  if ((row[latKey] == null) !== (row[lngKey] == null)) {
+    throw new HttpError(400, `Fields "${latKey}" and "${lngKey}" must both be set or both be null.`);
+  }
+}
+
+// A stop is in Ideas exactly when it has no date.
+function checkIdeaRule(row) {
+  if (row.date == null && row.status !== 'idea') {
+    throw new HttpError(400, 'A stop with no date is an idea, so "status" must be "idea". To put it on a day, send a "date" (or use POST /api/stops/:id/move).');
+  }
+  if (row.date != null && row.status === 'idea') {
+    throw new HttpError(400, 'Status "idea" is only for stops with no date. To move it to Ideas, send "date": null with "status": "idea" (or use POST /api/stops/:id/move with "date": null).');
+  }
+}
+
+function checkInTrip(trip, date) {
+  if (!trip.start_date || !trip.end_date) {
+    throw new HttpError(400, 'The trip has no start and end date yet. Set them with PUT /api/trip first.');
+  }
+  if (date < trip.start_date || date > trip.end_date) {
+    throw new HttpError(400, `Date ${date} is outside the trip dates (${trip.start_date} to ${trip.end_date}).`);
+  }
 }
 
 function parseId(raw) {
   if (!/^[1-9]\d{0,15}$/.test(raw)) {
-    throw new HttpError(400, `Item id must be a positive integer. Got "${raw}".`);
+    throw new HttpError(400, `Stop id must be a positive integer. Got "${raw}".`);
   }
   return Number(raw);
 }
 
 // ---------- Data helpers ----------
 
-function tripView(row) {
-  const t = {};
-  for (const c of TRIP_COLUMNS) t[c] = row ? row[c] ?? null : null;
-  return t;
+function pick(row, cols) {
+  const out = {};
+  for (const c of cols) out[c] = row ? row[c] ?? null : null;
+  return out;
 }
 
-function itemView(row) {
-  const item = {};
-  for (const c of ITEM_COLUMNS) item[c] = row[c] ?? null;
-  return item;
+const tripView = (row) => pick(row, TRIP_COLUMNS);
+const stopView = (row) => pick(row, STOP_COLUMNS);
+
+// Day settings for a date. Dates with no row get the defaults.
+function dayView(date, row) {
+  const day = pick(row, DAY_COLUMNS);
+  day.date = date;
+  day.start_time = day.start_time || DEFAULT_START;
+  return day;
 }
 
 async function getTripRow(env) {
@@ -285,25 +351,53 @@ function parseSnapshot(value) {
 // ---------- Handlers ----------
 
 async function handleItinerary(env) {
-  const [trip, items] = await Promise.all([
+  const [trip, days, stops] = await Promise.all([
     getTripRow(env),
-    env.DB.prepare('SELECT * FROM items ORDER BY date ASC, start_time IS NOT NULL, start_time ASC, id ASC').all(),
+    env.DB.prepare('SELECT * FROM days').all(),
+    env.DB.prepare('SELECT * FROM stops ORDER BY position ASC, id ASC').all(),
   ]);
-  return json({ trip: tripView(trip), items: items.results.map(itemView) });
+  const t = tripView(trip);
+  const dayRows = new Map(days.results.map((r) => [r.date, r]));
+  const byDate = new Map(); // date -> stops in order; '' is Ideas
+  for (const row of stops.results) {
+    const key = row.date ?? '';
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key).push(stopView(row));
+  }
+  const dayList = tripDates(t.start_date, t.end_date).map((date, i) => {
+    const day = dayView(date, dayRows.get(date));
+    day.n = i + 1;
+    day.schedule = schedule(day, byDate.get(date) || []);
+    return day;
+  });
+  return json({ trip: t, days: dayList, ideas: byDate.get('') || [] });
 }
 
 async function handleUpdateTrip(request, env, actor) {
   const body = await readJsonObject(request);
-  const fields = validateTripFields(body);
-  const keys = Object.keys(fields);
-  if (keys.length === 0) {
-    throw new HttpError(400, `Request body has no fields to update. Allowed fields: ${TRIP_FIELDS.join(', ')}.`);
-  }
+  const fields = cleanFields(body, TRIP_FIELDS);
+  requireSomeFields(fields, TRIP_FIELDS);
   const current = await getTripRow(env);
   const merged = { ...current, ...fields };
-  if (merged.start_date != null && merged.end_date != null && merged.end_date < merged.start_date) {
-    throw new HttpError(400, `Field "end_date" (${merged.end_date}) must be on or after "start_date" (${merged.start_date}).`);
+  const start = merged.start_date;
+  const end = merged.end_date;
+  if (start != null && end != null) {
+    if (end < start) {
+      throw new HttpError(400, `Field "end_date" (${end}) must be on or after "start_date" (${start}).`);
+    }
+    if (dayCount(start, end) > MAX_DAYS) {
+      throw new HttpError(400, `The trip can be at most ${MAX_DAYS} days long.`);
+    }
   }
+  if ('start_date' in fields || 'end_date' in fields) {
+    const { n } = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM stops WHERE date IS NOT NULL AND (? IS NULL OR ? IS NULL OR date < ? OR date > ?)'
+    ).bind(start, end, start, end).first();
+    if (n > 0) {
+      throw new HttpError(400, `${n === 1 ? '1 stop is' : `${n} stops are`} on a date outside the new trip dates. Move them to other days or to Ideas first (POST /api/stops/:id/move).`);
+    }
+  }
+  const keys = Object.keys(fields);
   const ts = now();
   const sets = [...keys.map((k) => `${k} = ?`), 'updated_at = ?', 'updated_by = ?'];
   const values = [...keys.map((k) => fields[k]), ts, actor];
@@ -320,67 +414,6 @@ async function handleUpdateTrip(request, env, actor) {
   const row = results[1].results[0];
   if (!row) throw new HttpError(500, 'Trip row is missing. Apply schema.sql to the database.');
   return json(tripView(row));
-}
-
-async function handleCreateItem(request, env, actor) {
-  const body = await readJsonObject(request);
-  const fields = validateItemFields(body, { isCreate: true });
-  checkTimeOrder(fields.start_time ?? null, fields.end_time ?? null);
-  const ts = now();
-  const cols = ITEM_FIELDS;
-  const values = cols.map((c) => fields[c] ?? null);
-  const results = await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO items (${cols.join(', ')}, created_at, created_by, updated_at, updated_by)
-       VALUES (${cols.map(() => '?').join(', ')}, ?, ?, ?, ?) RETURNING *`
-    ).bind(...values, ts, actor, ts, actor),
-    env.DB.prepare(
-      `INSERT INTO audit_log (ts, actor, action, item_id, before, after)
-       SELECT ?, ?, 'create', id, NULL, ${ITEM_JSON} FROM items WHERE id = last_insert_rowid()`
-    ).bind(ts, actor),
-  ]);
-  return json(itemView(results[0].results[0]), 201);
-}
-
-async function handleUpdateItem(request, env, actor, id) {
-  const body = await readJsonObject(request);
-  const fields = validateItemFields(body, { isCreate: false });
-  const keys = Object.keys(fields);
-  if (keys.length === 0) {
-    throw new HttpError(400, `Request body has no fields to update. Allowed fields: ${ITEM_FIELDS.join(', ')}.`);
-  }
-  const current = await env.DB.prepare('SELECT * FROM items WHERE id = ?').bind(id).first();
-  if (!current) throw new HttpError(404, `Item ${id} not found.`);
-  const merged = { ...current, ...fields };
-  checkTimeOrder(merged.start_time, merged.end_time);
-  const ts = now();
-  const sets = [...keys.map((k) => `${k} = ?`), 'updated_at = ?', 'updated_by = ?'];
-  const values = [...keys.map((k) => fields[k]), ts, actor];
-  const results = await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO audit_log (ts, actor, action, item_id, before) SELECT ?, ?, 'update', id, ${ITEM_JSON} FROM items WHERE id = ?`
-    ).bind(ts, actor, id),
-    env.DB.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...values, id),
-    env.DB.prepare(
-      `UPDATE audit_log SET after = (SELECT ${ITEM_JSON} FROM items WHERE id = ?)
-       WHERE id = (SELECT max(id) FROM audit_log WHERE action = 'update' AND item_id = ? AND after IS NULL)`
-    ).bind(id, id),
-  ]);
-  const row = results[1].results[0];
-  if (!row) throw new HttpError(404, `Item ${id} not found.`);
-  return json(itemView(row));
-}
-
-async function handleDeleteItem(env, actor, id) {
-  const ts = now();
-  const results = await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO audit_log (ts, actor, action, item_id, before, after) SELECT ?, ?, 'delete', id, ${ITEM_JSON}, NULL FROM items WHERE id = ?`
-    ).bind(ts, actor, id),
-    env.DB.prepare('DELETE FROM items WHERE id = ? RETURNING id').bind(id),
-  ]);
-  if (!results[1].results.length) throw new HttpError(404, `Item ${id} not found.`);
-  return json({ deleted: id });
 }
 
 async function handleAudit(url, env) {
@@ -436,21 +469,6 @@ async function handleApi(request, env, url) {
     if (method !== 'PUT') throw methodNotAllowed(['PUT']);
     const actor = await requireActor(request, env);
     return handleUpdateTrip(request, env, actor);
-  }
-
-  if (path === '/api/items') {
-    if (method !== 'POST') throw methodNotAllowed(['POST']);
-    const actor = await requireActor(request, env);
-    return handleCreateItem(request, env, actor);
-  }
-
-  const itemMatch = /^\/api\/items\/([^/]+)$/.exec(path);
-  if (itemMatch) {
-    if (method !== 'PUT' && method !== 'DELETE') throw methodNotAllowed(['PUT', 'DELETE']);
-    const actor = await requireActor(request, env);
-    const id = parseId(itemMatch[1]);
-    if (method === 'PUT') return handleUpdateItem(request, env, actor, id);
-    return handleDeleteItem(env, actor, id);
   }
 
   if (path === '/api/audit') {
