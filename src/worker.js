@@ -331,6 +331,37 @@ function dayView(date, row) {
   return day;
 }
 
+// Renumbers one column (a date, or null for Ideas) to 0..n-1, keeping the
+// current order. UPDATE ... FROM computes all new numbers before writing.
+function renumber(env, date) {
+  return env.DB.prepare(
+    `UPDATE stops SET position = r.rn
+     FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY position, id) - 1 AS rn FROM stops WHERE date IS ?) AS r
+     WHERE stops.id = r.id`
+  ).bind(date);
+}
+
+// Audit rows for a stop: "before" is written first, "after" is filled in
+// at the end of the same batch.
+function auditBefore(env, ts, actor, action, id) {
+  return env.DB.prepare(
+    `INSERT INTO audit_log (ts, actor, action, item_id, before) SELECT ?, ?, ?, id, ${STOP_JSON} FROM stops WHERE id = ?`
+  ).bind(ts, actor, action, id);
+}
+
+function auditAfter(env, action, id) {
+  return env.DB.prepare(
+    `UPDATE audit_log SET after = (SELECT ${STOP_JSON} FROM stops WHERE id = ?)
+     WHERE id = (SELECT max(id) FROM audit_log WHERE action = ? AND item_id = ? AND after IS NULL)`
+  ).bind(id, action, id);
+}
+
+async function getStopRow(env, id) {
+  const row = await env.DB.prepare('SELECT * FROM stops WHERE id = ?').bind(id).first();
+  if (!row) throw new HttpError(404, `Stop ${id} not found.`);
+  return row;
+}
+
 async function getTripRow(env) {
   const row = await env.DB.prepare('SELECT * FROM trip WHERE id = 1').first();
   if (!row) {
@@ -416,6 +447,79 @@ async function handleUpdateTrip(request, env, actor) {
   return json(tripView(row));
 }
 
+async function handleCreateStop(request, env, actor) {
+  const body = await readJsonObject(request);
+  const row = cleanFields(body, STOP_FIELDS);
+  requireTitle(row);
+  row.date ??= null;
+  row.kind ??= 'sight';
+  row.duration_min ??= 60;
+  row.status ??= row.date == null ? 'idea' : 'planned';
+  checkIdeaRule(row);
+  checkPair(row, 'lat', 'lng');
+  if (row.date != null) checkInTrip(await getTripRow(env), row.date);
+  const ts = now();
+  const values = STOP_FIELDS.map((c) => row[c] ?? null);
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO stops (${STOP_FIELDS.join(', ')}, position, created_at, created_by, updated_at, updated_by)
+       VALUES (${STOP_FIELDS.map(() => '?').join(', ')}, (SELECT COUNT(*) FROM stops WHERE date IS ?), ?, ?, ?, ?)
+       RETURNING *`
+    ).bind(...values, row.date, ts, actor, ts, actor),
+    env.DB.prepare(
+      `INSERT INTO audit_log (ts, actor, action, item_id, before, after)
+       SELECT ?, ?, 'create', id, NULL, ${STOP_JSON} FROM stops WHERE id = last_insert_rowid()`
+    ).bind(ts, actor),
+  ]);
+  return json(stopView(results[0].results[0]), 201);
+}
+
+async function handleUpdateStop(request, env, actor, id) {
+  const body = await readJsonObject(request);
+  const fields = cleanFields(body, STOP_FIELDS);
+  requireSomeFields(fields, STOP_FIELDS);
+  if ('title' in fields) requireTitle(fields);
+  rejectNulls(fields, ['kind', 'duration_min', 'status']);
+  const current = await getStopRow(env, id);
+  const merged = { ...current, ...fields };
+  checkIdeaRule(merged);
+  checkPair(merged, 'lat', 'lng');
+  const dateChanged = 'date' in fields && fields.date !== current.date;
+  if (dateChanged && merged.date != null) checkInTrip(await getTripRow(env), merged.date);
+  const keys = Object.keys(fields);
+  const ts = now();
+  const sets = [...keys.map((k) => `${k} = ?`), 'updated_at = ?', 'updated_by = ?'];
+  const values = [...keys.map((k) => fields[k]), ts, actor];
+  if (dateChanged) {
+    // End of the new column. The count runs before this row changes.
+    sets.push('position = (SELECT COUNT(*) FROM stops WHERE date IS ?)');
+    values.push(merged.date);
+  }
+  const statements = [
+    auditBefore(env, ts, actor, 'update', id),
+    env.DB.prepare(`UPDATE stops SET ${sets.join(', ')} WHERE id = ?`).bind(...values, id),
+  ];
+  if (dateChanged) statements.push(renumber(env, current.date));
+  statements.push(auditAfter(env, 'update', id), env.DB.prepare('SELECT * FROM stops WHERE id = ?').bind(id));
+  const results = await env.DB.batch(statements);
+  const row = results[results.length - 1].results[0];
+  if (!row) throw new HttpError(404, `Stop ${id} not found.`);
+  return json(stopView(row));
+}
+
+async function handleDeleteStop(env, actor, id) {
+  const current = await getStopRow(env, id);
+  const ts = now();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO audit_log (ts, actor, action, item_id, before, after) SELECT ?, ?, 'delete', id, ${STOP_JSON}, NULL FROM stops WHERE id = ?`
+    ).bind(ts, actor, id),
+    env.DB.prepare('DELETE FROM stops WHERE id = ?').bind(id),
+    renumber(env, current.date),
+  ]);
+  return json({ deleted: id });
+}
+
 async function handleAudit(url, env) {
   let limit = AUDIT_DEFAULT_LIMIT;
   const raw = url.searchParams.get('limit');
@@ -469,6 +573,21 @@ async function handleApi(request, env, url) {
     if (method !== 'PUT') throw methodNotAllowed(['PUT']);
     const actor = await requireActor(request, env);
     return handleUpdateTrip(request, env, actor);
+  }
+
+  if (path === '/api/stops') {
+    if (method !== 'POST') throw methodNotAllowed(['POST']);
+    const actor = await requireActor(request, env);
+    return handleCreateStop(request, env, actor);
+  }
+
+  const stopMatch = /^\/api\/stops\/([^/]+)$/.exec(path);
+  if (stopMatch) {
+    if (method !== 'PUT' && method !== 'DELETE') throw methodNotAllowed(['PUT', 'DELETE']);
+    const actor = await requireActor(request, env);
+    const id = parseId(stopMatch[1]);
+    if (method === 'PUT') return handleUpdateStop(request, env, actor, id);
+    return handleDeleteStop(env, actor, id);
   }
 
   if (path === '/api/audit') {
