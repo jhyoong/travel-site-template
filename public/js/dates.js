@@ -1,11 +1,13 @@
-// Date and time helpers. No DOM access, so they can be unit tested
-// with node --test (see test/dates.test.mjs).
+// Date helpers. No DOM access, so the Worker imports them too and they
+// can be unit tested with node --test (see test/dates.test.mjs).
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const LONG_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const LONG_MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+  "August", "September", "October", "November", "December"];
 
-// Most empty days drawn for one trip, so a typo in the end date
-// (e.g. 2062 instead of 2026) can't freeze the page.
+// Longest trip allowed. The Worker rejects longer date ranges.
 export const MAX_DAYS = 366;
 
 // "2026-10-12" -> Date at UTC midnight, or null. Using UTC means the
@@ -28,6 +30,13 @@ export function formatDay(dateStr) {
   return DAYS[dt.getUTCDay()] + " " + dt.getUTCDate() + " " + MONTHS[dt.getUTCMonth()];
 }
 
+// "2026-11-20" -> "Friday 20 November"
+export function formatLongDay(dateStr) {
+  const dt = parseDate(dateStr);
+  if (!dt) return dateStr || "";
+  return LONG_DAYS[dt.getUTCDay()] + " " + dt.getUTCDate() + " " + LONG_MONTHS[dt.getUTCMonth()];
+}
+
 // "2026-10-14" -> "14 Oct 2026"
 function formatShortDate(dateStr) {
   const dt = parseDate(dateStr);
@@ -42,13 +51,6 @@ export function formatDateRange(start, end) {
   return "";
 }
 
-export function formatTimeRange(start, end) {
-  if (start && end) return start + " – " + end;
-  if (start) return start;
-  if (end) return "Until " + end;
-  return "All day";
-}
-
 // ISO timestamp -> local date and time in the browser's locale.
 export function formatTimestamp(ts) {
   if (!ts) return "";
@@ -59,40 +61,16 @@ export function formatTimestamp(ts) {
   });
 }
 
-function dayNumber(start, date) {
-  return Math.round((parseDate(date) - parseDate(start)) / 86400000) + 1;
+// Number of days from start to end, counting both.
+export function dayCount(start, end) {
+  return Math.round((parseDate(end) - parseDate(start)) / 86400000) + 1;
 }
 
-// Groups items into days for the timeline.
-// Returns [{ date, dayNumber, outside, items }] sorted by date.
-// - If the trip has a valid start and end date, every day in that range is
-//   included (up to MAX_DAYS), even days with no items.
-// - Items on other dates get their own day with dayNumber null and
-//   outside true. Without a trip range, outside is always false.
-// - Items keep the order they were given in (the API already sorts them).
-export function buildDays(trip, items) {
-  const start = trip && trip.start_date;
-  const end = trip && trip.end_date;
-  const hasRange = !!(parseDate(start) && parseDate(end)) && start <= end;
-  const byDate = new Map();
-  if (hasRange) {
-    for (let d = start, n = 1; d <= end && n <= MAX_DAYS; d = addDays(d, 1), n++) {
-      byDate.set(d, { date: d, dayNumber: n, outside: false, items: [] });
-    }
-  }
-  for (const item of items || []) {
-    let day = byDate.get(item.date);
-    if (!day) {
-      const inRange = hasRange && item.date >= start && item.date <= end;
-      day = {
-        date: item.date,
-        dayNumber: inRange ? dayNumber(start, item.date) : null,
-        outside: hasRange && !inRange,
-        items: []
-      };
-      byDate.set(item.date, day);
-    }
-    day.items.push(item);
-  }
-  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+// Every date from start to end (at most MAX_DAYS). Empty if either date
+// is missing or end is before start.
+export function tripDates(start, end) {
+  if (!parseDate(start) || !parseDate(end) || end < start) return [];
+  const out = [];
+  for (let d = start; d <= end && out.length < MAX_DAYS; d = addDays(d, 1)) out.push(d);
+  return out;
 }
