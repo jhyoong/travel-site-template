@@ -107,6 +107,7 @@ export function initTimeline(ctx) {
     }
   }
   function spy() {
+    if (!ctx.model()) return;
     const list = days();
     if (ctx.view() !== "timeline" || spyLock || !list.length) return;
     const line = nav.getBoundingClientRect().bottom + 48;

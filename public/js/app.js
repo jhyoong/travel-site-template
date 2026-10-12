@@ -82,8 +82,14 @@ async function send(method, path, body) {
   return result;
 }
 
+// True when col is Ideas or a day that still exists.
+const hasCol = (col) => col === "ideas" || !!dayByDate(col);
+
 function moveStop(id, to, idx) {
-  const from = colOf(id), title = stopById(id).title, prevStatus = stopById(id).status;
+  if (!model) return;
+  const stop = stopById(id);
+  if (!stop || !hasCol(to)) { renderAll(); return; }
+  const from = colOf(id), title = stop.title, prevStatus = stop.status;
   const fromIdx = colStops(from).findIndex((s) => s.id === id);
   moveLocal(id, to, idx);
   const toIdx = colStops(to).findIndex((s) => s.id === id);
@@ -103,7 +109,8 @@ function moveStop(id, to, idx) {
 // Moves a stop back and restores its status (a move to or from Ideas
 // changes the status).
 async function undoMove(id, col, idx, prevStatus) {
-  if (!stopById(id)) return;
+  if (!model) return;
+  if (!stopById(id) || !hasCol(col)) { renderAll(); return; }
   moveLocal(id, col, idx);
   const s = stopById(id), fixStatus = s.status !== prevStatus;
   s.status = prevStatus;
@@ -124,6 +131,7 @@ function keepSuggestion(id) {
   timeline.flashStop(id);
   send("PUT", `/api/stops/${id}`, { status: "planned" });
   toast(`Added ${title} to the plan.`, () => {
+    if (!model) return;
     setStatusLocal(id, "suggested");
     send("PUT", `/api/stops/${id}`, { status: "suggested" });
   });
@@ -260,6 +268,10 @@ function showSignIn(message) {
   renderTopbar();
   showError($("page-error"), "");
   showError($("signin-error"), message || "");
+  // Hide any toast so its Undo can't run after sign-out.
+  $("toast").classList.remove("show");
+  const undoButton = $("toast").querySelector("button");
+  if (undoButton) undoButton.disabled = true;
   $("signin-back").hidden = !canViewPublic;
   show("signin-section");
   $("signin-key").focus();
