@@ -246,6 +246,17 @@ body.dragging,body.dragging *{cursor:grabbing!important;user-select:none;-webkit
   .board{scroll-snap-type:none;gap:16px;padding:6px var(--padx) 56px}
   .col{flex:1 1 0;min-width:260px;max-width:380px}
 }
+/* ================= wide desktop: day list in a left sidebar ================= */
+@media (min-width:1240px){
+  .tl-view{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) 828px minmax(0,1fr);grid-template-rows:auto 1fr}
+  .tl-intro{grid-column:2;grid-row:1}
+  #tl-days{grid-column:2;grid-row:2}
+  .tl-nav{grid-column:1;grid-row:2;justify-self:end;align-self:start;width:min(240px,100%);max-height:100vh;
+    flex-direction:column;gap:8px;overflow:hidden auto;padding:22px 0 24px 24px;
+    background:none;-webkit-backdrop-filter:none;backdrop-filter:none;border:0}
+  .tl-nav::-webkit-scrollbar{width:6px;height:auto}
+  .dchip{flex:none;min-width:0;width:100%}
+}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
 
 /* ================= app additions ================= */

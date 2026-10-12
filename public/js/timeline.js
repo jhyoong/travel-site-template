@@ -9,6 +9,10 @@ export function initTimeline(ctx) {
   const nav = document.getElementById("tl-nav");
   const daysEl = document.getElementById("tl-days");
   let active = null, spyLock = false, spyRaf = 0;
+  // On wide screens the day buttons sit in a sidebar instead of a sticky bar
+  // above the days (matches the breakpoint in style.css).
+  const side = window.matchMedia("(min-width:1240px)");
+  const barH = () => side.matches ? 0 : nav.offsetHeight;
 
   const days = () => ctx.model().days;
 
@@ -101,16 +105,21 @@ export function initTimeline(ctx) {
     active = date;
     nav.querySelectorAll(".dchip").forEach((b) => b.setAttribute("aria-current", b.dataset.jump === date));
     const chip = nav.querySelector(`[data-jump="${date}"]`);
-    if (chip && nav.scrollWidth > nav.clientWidth) {
+    if (!chip) return;
+    const behavior = reduce ? "auto" : "smooth";
+    if (side.matches) {
+      const t = chip.offsetTop, b = t + chip.offsetHeight;
+      if (t < nav.scrollTop + 8 || b > nav.scrollTop + nav.clientHeight - 8) nav.scrollTo({ top: t - 16, behavior });
+    } else if (nav.scrollWidth > nav.clientWidth) {
       const l = chip.offsetLeft, r = l + chip.offsetWidth;
-      if (l < nav.scrollLeft + 8 || r > nav.scrollLeft + nav.clientWidth - 8) nav.scrollTo({ left: l - 16, behavior: reduce ? "auto" : "smooth" });
+      if (l < nav.scrollLeft + 8 || r > nav.scrollLeft + nav.clientWidth - 8) nav.scrollTo({ left: l - 16, behavior });
     }
   }
   function spy() {
     if (!ctx.model()) return;
     const list = days();
     if (ctx.view() !== "timeline" || spyLock || !list.length) return;
-    const line = nav.getBoundingClientRect().bottom + 48;
+    const line = (side.matches ? 0 : nav.getBoundingClientRect().bottom) + 48;
     let cur = list[0].date;
     for (const d of list) { const el = document.getElementById("day-" + d.date); if (el && el.getBoundingClientRect().top <= line) cur = d.date; }
     if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = list[list.length - 1].date;
@@ -131,7 +140,7 @@ export function initTimeline(ctx) {
     const el = document.getElementById("day-" + date);
     if (!el) return;
     setActive(date);
-    scrollToY(el.getBoundingClientRect().top + window.scrollY - nav.offsetHeight + 1);
+    scrollToY(el.getBoundingClientRect().top + window.scrollY - barH() + 1);
   }
   function flashStop(id) {
     const li = daysEl.querySelector(`.stop[data-id="${id}"]`);
@@ -143,7 +152,7 @@ export function initTimeline(ctx) {
     const li = daysEl.querySelector(`.stop[data-id="${id}"]`);
     if (!li) return;
     setActive(ctx.colOf(id));
-    scrollToY(li.getBoundingClientRect().top + window.scrollY - nav.offsetHeight - 24, () => flashStop(id));
+    scrollToY(li.getBoundingClientRect().top + window.scrollY - barH() - 24, () => flashStop(id));
   }
 
   nav.addEventListener("click", (e) => { const b = e.target.closest("[data-jump]"); if (b) jumpTo(b.dataset.jump); });
