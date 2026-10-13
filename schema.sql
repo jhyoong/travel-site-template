@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS stops (
   link TEXT,
   lat REAL,
   lng REAL,
+  -- 1 when the late warning was dismissed (the stop happens at its fixed
+  -- time anyway, e.g. a flight landing).
+  late_ok INTEGER NOT NULL DEFAULT 0 CHECK (late_ok IN (0, 1)),
   created_at TEXT NOT NULL,
   created_by TEXT NOT NULL,
   updated_at TEXT NOT NULL,

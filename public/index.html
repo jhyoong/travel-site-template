@@ -1,5 +1,13 @@
 <!doctype html>
-<html lang="en">
+<!--
+  COLOUR THEME
+  To change the theme, edit data-theme on the <html> line below, or run deploy.sh.
+    Light: coastal (default), autumn, matcha
+    Dark:  lantern, midnight
+  The colours for each theme are in the "Themes" section at the top of style.css.
+  Pictures of each theme are in sample_themes/.
+-->
+<html lang="en" data-theme="coastal">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -56,6 +64,7 @@
         <div class="vswitch" id="vswitch" role="group" aria-label="View">
           <button type="button" data-v="timeline" aria-pressed="true">Timeline</button>
           <button type="button" data-v="board" aria-pressed="false">Board</button>
+          <button type="button" data-v="map" aria-pressed="false">Map</button>
         </div>
       </header>
 
@@ -83,6 +92,12 @@
           <nav class="bd-jump" id="bd-jump" aria-label="Jump to column"></nav>
         </div>
         <div class="board" id="board"></div>
+      </main>
+
+      <main class="mp-view" id="mp-view" hidden>
+        <nav class="mp-nav" id="mp-nav" aria-label="Choose a day"></nav>
+        <p class="error" id="mp-error" role="alert" hidden></p>
+        <div class="mp-map" id="mp-map"></div>
       </main>
     </div>
   </div>
@@ -120,6 +135,7 @@
         <label class="field"><span>Fixed start time</span><input name="fixed_time" type="time"><small>For bookings. This time never moves.</small></label>
         <label class="field"><span>Not before</span><input name="after_time" type="time"><small>Earliest start, for example lunch.</small></label>
       </div>
+      <label class="check"><input name="late_ok" type="checkbox"><span>Hide late warning</span></label>
       <label class="field"><span>Area</span><input name="area" type="text" maxlength="100" placeholder="e.g. Higashiyama"></label>
       <label class="field"><span>Location</span><input name="location" type="text" autocomplete="off" placeholder="35.0089, 135.7700 or a Google Maps link"><small>Used to estimate travel time.</small></label>
       <div class="row">
