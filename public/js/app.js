@@ -160,6 +160,36 @@ function dismissLate(id) {
   });
 }
 
+// Fields sent to POST /api/stops when Undo brings a deleted stop back.
+const STOP_FIELDS = ["date", "title", "area", "kind", "duration_min", "status", "fixed_time", "after_time",
+  "stub", "booking_ref", "notes", "link", "lat", "lng", "late_ok"];
+
+// Deletes a stop straight away. Undo creates it again (with a new id) in
+// its old place.
+function deleteStop(id) {
+  if (!model) return;
+  const stop = stopById(id);
+  if (!stop) { renderAll(); return; }
+  const col = colOf(id), list = colStops(col), idx = list.findIndex((s) => s.id === id);
+  const copy = Object.fromEntries(STOP_FIELDS.map((k) => [k, stop[k]]));
+  list.splice(idx, 1);
+  recompute();
+  renderAll();
+  const pending = send("DELETE", `/api/stops/${id}`);
+  toast(`Deleted ${stop.title}.`, () => undoDelete(copy, col, idx, pending));
+}
+
+async function undoDelete(copy, col, idx, pending) {
+  if (!(await pending)) return;
+  if (!model) return;
+  // The day may have gone since (trip dates changed): bring it back to Ideas.
+  if (!hasCol(col)) { col = "ideas"; Object.assign(copy, { date: null, status: "idea" }); }
+  const created = await send("POST", "/api/stops", copy);
+  if (!created) return;
+  landed = created.id;
+  send("POST", `/api/stops/${created.id}/move`, { date: copy.date, index: idx });
+}
+
 async function addIdea(title) {
   const created = await send("POST", "/api/stops", { title });
   if (!created) return;
@@ -188,6 +218,7 @@ const ctx = {
   stopById,
   takeLanded: () => { const id = landed; landed = null; return id; },
   onMove: moveStop,
+  onDelete: deleteStop,
   onKeep: keepSuggestion,
   onToIdeas: (id) => moveStop(id, "ideas", model.ideas.length),
   onAddIdea: addIdea,

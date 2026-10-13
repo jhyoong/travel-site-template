@@ -228,6 +228,10 @@ a{color:inherit}
 .board.dragging{scroll-snap-type:none}
 .col{flex:0 0 min(84vw,340px);scroll-snap-align:start;background:var(--colbg);border:1px solid var(--line);border-radius:16px;padding:12px 10px;transition:opacity .15s,border-color .15s}
 .col.ideas{background:transparent;border:1.5px dashed color-mix(in srgb,var(--ink-3) 55%,transparent)}
+.ideas-stack{flex:0 0 min(84vw,340px);scroll-snap-align:start;display:flex;flex-direction:column;gap:12px}
+.ideas-stack>.col{flex:none}
+.trash{display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding:10px;border:1.5px dashed color-mix(in srgb,var(--warn) 45%,transparent);border-radius:16px;color:var(--warn);font-size:13px;font-weight:600;transition:background .15s,border-color .15s}
+.trash.over{background:var(--warn-bg);border-color:var(--warn);border-style:solid}
 .col.drop-target{border-color:var(--day)}
 .col.no-drop{opacity:.45}
 @keyframes colflash{from{box-shadow:0 0 0 4px color-mix(in srgb,var(--day) 45%,transparent)}to{box-shadow:0 0 0 4px transparent}}
@@ -329,6 +333,7 @@ body.dragging,body.dragging *{cursor:grabbing!important;user-select:none;-webkit
   .bd-jump{display:none}
   .board{scroll-snap-type:none;gap:16px;padding:6px var(--padx) 56px}
   .col{flex:1 1 0;min-width:260px;max-width:380px}
+  .ideas-stack{flex:1 1 0;min-width:260px;max-width:380px}
 }
 /* ================= wide desktop: day list in a left sidebar ================= */
 @media (min-width:1240px){
