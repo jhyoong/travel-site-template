@@ -3,7 +3,7 @@
 A private, single-trip itinerary site that runs within limits of Cloudflare's free tier (as of OCT 2026).
 Meant for single use deployments, so fork it once per trip.
 
-- A timeline view shows each day's stops in order, with times worked out from durations and rough travel estimates. A board view lets you drag stops between days and an Ideas column.
+- A timeline view shows each day's stops in order, with times worked out from durations (travel time between stops is not included). A board view lets you drag stops between days and an Ideas column.
 - Stops can be booked (with fixed times), planned, suggested, or ideas.
 - A map view shows one day's locations, or the entire trip, with place names in English and the local language.
 - Agents use a REST API (plain-text docs at `GET /api`). The API returns the same computed times the page shows.

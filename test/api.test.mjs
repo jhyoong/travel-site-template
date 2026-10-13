@@ -229,7 +229,7 @@ test('itinerary: access follows VIEW_PUBLIC and lists every trip day', async () 
   assert.equal(d.start_time, '09:00');
   assert.equal(d.title, null);
   assert.deepEqual(d.schedule, {
-    stops: [], start_leg: null, leave_at: null, back_leg: null, back_at: null, total_min: 0, clashes: [],
+    stops: [], leave_at: null, back_at: null, total_min: 0, clashes: [],
   });
   assert.ok(Array.isArray(it.ideas));
 });
@@ -517,12 +517,10 @@ test('itinerary: returns computed times from schedule.js', async (t) => {
   assert.equal(ra.id, a.id);
   assert.equal(ra.start, '10:00');
   assert.equal(ra.end, '11:00');
-  assert.equal(ra.leg, null);
   assert.equal(rb.start, '10:30');
   assert.equal(rb.end, '11:00');
-  assert.equal(rb.late_min, 45);
-  assert.deepEqual(rb.leg, { mode: 'any', min: 15, text: 'About 15 min travel' });
-  assert.deepEqual(sc.clashes, [{ id: b.id, title: 'B', late_min: 45 }]);
+  assert.equal(rb.late_min, 30);
+  assert.deepEqual(sc.clashes, [{ id: b.id, title: 'B', late_min: 30 }]);
   assert.equal(sc.total_min, 90);
 
   const ok = await api('PUT', `/api/stops/${b.id}`, { key: KEY_A, body: { late_ok: true } });
