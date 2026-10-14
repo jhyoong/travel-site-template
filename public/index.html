@@ -52,6 +52,7 @@
     <h1>Set up your trip</h1>
     <p>You can change these later.</p>
     <div id="setup-form"></div>
+    <div id="setup-backup"></div>
   </section>
 
   <div id="trip-section" hidden>
@@ -179,6 +180,18 @@
   <dialog id="trip-dialog" class="sheet" aria-labelledby="trip-dialog-title">
     <h2 id="trip-dialog-title">Trip settings</h2>
     <div id="trip-dialog-form"></div>
+    <div id="trip-dialog-backup"></div>
+  </dialog>
+
+  <dialog id="restore-dialog" aria-labelledby="restore-title">
+    <h2 id="restore-title">Restore from backup?</h2>
+    <p class="restore-summary"></p>
+    <p class="error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" data-action="download">Download current backup first</button>
+      <button type="button" class="btn" data-action="cancel">Cancel</button>
+      <button type="button" class="btn btn-danger" data-action="restore">Replace everything</button>
+    </div>
   </dialog>
 
   <dialog id="history-dialog" aria-labelledby="history-title">
@@ -189,6 +202,9 @@
     <p class="status" hidden></p>
     <p class="error" role="alert" hidden></p>
     <ol class="audit"></ol>
+    <div class="actions audit-more" hidden>
+      <button type="button" class="btn" data-action="more">Load more</button>
+    </div>
   </dialog>
 </body>
 </html>

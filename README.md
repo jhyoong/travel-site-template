@@ -84,6 +84,29 @@ npx wrangler d1 execute itinerary-db --remote --command "ALTER TABLE stops ADD C
 
 Use `--local` instead of `--remote` for your local database.
 
+## Backup and restore
+
+A backup is one JSON file with the trip, all days, all stops (including Ideas) and the full change history. API keys and `wrangler.toml` settings are not included.
+
+- **Back up:** Trip settings, then **Download backup**. Agents can call `GET /api/backup`.
+- **Restore:** Trip settings, then **Restore from backup**, and pick a file. The app shows what will be replaced and lets you download the current data first. Restore replaces everything. If the file is invalid, nothing changes.
+
+To rebuild on a new Cloudflare setup (for example, if the Worker or database is lost):
+
+1. Run `bash deploy.sh` to create the Worker and a new database, and set your keys.
+2. Open the site and sign in. It shows the "Set up your trip" screen.
+3. Under **Restore from a backup**, pick your backup file and confirm.
+
+From the command line:
+
+```sh
+curl -H "Authorization: Bearer $KEY" -o backup.json https://<your-worker>/api/backup
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  --data-binary @backup.json https://<your-worker>/api/restore
+```
+
+The change history is never deleted. Recent changes shows the newest 50; **Load more** shows older ones.
+
 ## Keys
 
 - Send the key in an `Authorization: Bearer <key>` header. The web pages do this for you after you sign in.
@@ -166,7 +189,8 @@ public/js/map-points.js  picks which pins the map shows (no DOM)
 public/js/stop-dialog.js add/edit stop dialog
 public/js/day-dialog.js  day settings dialog
 public/js/setup.js       trip form (setup and trip settings)
-public/js/history.js     recent changes panel
+public/js/history.js     recent changes panel, with Load more
+public/js/backup.js      backup download, restore and its warning
 public/style.css         styles and colour themes
 schema.sql               D1 tables: trip, days, stops, audit_log
 wrangler.toml            Worker, assets, D1 binding, VIEW_PUBLIC
