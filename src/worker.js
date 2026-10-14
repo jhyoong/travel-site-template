@@ -739,8 +739,8 @@ settings (title, start time, start place, end place).
 Stops belong to a day, in order, or to "Ideas" (no date). Stop start
 times are NOT stored. They are worked out from:
   - the day's start_time (default 09:00) for the first stop,
-  - each stop's duration_min,
-  - rough travel time between stops (from lat/lng; 15 min if unknown),
+  - each stop's duration_min (each stop starts when the one before ends;
+    travel time is not added),
   - after_time (earliest start) and fixed_time (a start that never moves).
 If a fixed_time can't be reached in time, the stop shows as late
 ("clashes"), unless its late_ok is true. To change when something happens, change the order,
@@ -812,14 +812,15 @@ day (in GET /api/itinerary):
   {"date", "n", "title", "start_time", "start_place", "start_lat", "start_lng",
    "end_place", "end_lat", "end_lng", "updated_at", "updated_by",
    "schedule": {
-     "stops": [stop + {"start", "end", "leg", "free_min", "late_min"}],
-     "start_leg", "leave_at", "back_leg", "back_at", "total_min",
+     "stops": [stop + {"start", "end", "free_min", "late_min"}],
+     "leave_at", "back_at", "total_min",
      "clashes": [{"id", "title", "late_min"}]
    }}
   n is the day number (1 = first day). start/end/leave_at/back_at are HH:MM.
-  leg is the travel before a stop: {"mode": "walk"|"taxi"|"train"|"any",
-  "min", "text"}, null for the first stop. start_leg/back_leg are the legs
-  from start_place and to end_place (null if those have no lat/lng).
+  free_min is the gap before a stop (from after_time or fixed_time).
+  leave_at is the first stop's start and back_at the last stop's end. They
+  are null unless the day has a start_place (or start_lat/lng) or an
+  end_place (or end_lat/lng).
 
 Fields that are not set are null. Timestamps are ISO 8601 UTC strings.
 
@@ -859,7 +860,7 @@ Stop fields (POST /api/stops, PUT /api/stops/:id):
   notes        string, max ${MAX_LENGTHS.notes} chars
   link         http:// or https:// URL, max ${MAX_LENGTHS.link} chars
   lat          number -90 to 90. Set lat and lng together, or neither.
-  lng          number -180 to 180. Used for travel estimates.
+  lng          number -180 to 180. Used for the map.
   late_ok      true or false. Default false. true hides the late warning for
                this stop (it happens at its fixed_time anyway, e.g. a flight).
   title, kind, duration_min, status and late_ok cannot be set to null.

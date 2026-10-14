@@ -38,12 +38,13 @@ export function initBoard(ctx) {
     if (c.id === "ideas") {
       const ideas = ctx.model().ideas, mins = ideas.reduce((a, s) => a + s.duration_min, 0);
       const sub = ideas.length ? `${fmtDur(mins)} if you did them all.` : canEdit ? "Add places you might visit." : "No ideas yet.";
-      return `<section class="col ideas" data-col="ideas" style="--day:${c.color}" aria-labelledby="h-ideas">
+      const trash = canEdit ? `<div class="trash" aria-hidden="true">${ico("trash", 18)}<span>Drop here to delete</span></div>` : "";
+      return `<div class="ideas-stack">${trash}<section class="col ideas" data-col="ideas" style="--day:${c.color}" aria-labelledby="h-ideas">
         <header class="col-head"><div class="ch-top"><h2 id="h-ideas">Ideas</h2><span class="ch-date">${plural(ideas.length, "idea")}</span></div>
           <p class="ch-title">Not on a day yet</p><p class="ch-sub">${sub}</p></header>
         <ol class="cards">${ideas.map((s) => cardHTML(s, c, false, canEdit, landed)).join("")}</ol>
         ${canEdit ? `<form class="add" id="add"><input id="addin" type="text" placeholder="Add an idea" aria-label="New idea" maxlength="200" autocomplete="off"><button type="submit">Add</button></form>` : ""}
-      </section>`;
+      </section></div>`;
     }
     const sc = c.schedule, rows = sc.stops, busy = sc.total_min > BUSY;
     return `<section class="col${busy ? " busy" : ""}" data-col="${c.id}" style="--day:${c.color}" aria-labelledby="h-${c.id}">
@@ -144,9 +145,13 @@ export function initBoard(ctx) {
   }
   function moveGhost() { dg.ghost.style.transform = `translate(${dg.x - dg.ox}px, ${dg.y - dg.oy}px) rotate(${reduce ? 0 : 1.5}deg)`; }
   function colAtPoint() { const el = document.elementFromPoint(dg.x, dg.y); return el && el.closest(".col"); }
+  const overTrash = (x, y) => { const el = document.elementFromPoint(x, y); return !!(el && el.closest(".trash")); };
   function updateTarget() {
-    const col = colAtPoint();
+    const col = colAtPoint(), trash = boardEl.querySelector(".trash"), del = overTrash(dg.x, dg.y);
+    if (trash) trash.classList.toggle("over", del);
     boardEl.querySelectorAll(".col.drop-target").forEach((c) => { if (c !== col) c.classList.remove("drop-target"); });
+    // Over the delete box: put the placeholder back so nothing looks moved.
+    if (del) { if (dg.ph.previousElementSibling !== dg.card) dg.card.after(dg.ph); return; }
     if (!col || col.classList.contains("no-drop")) return;
     col.classList.add("drop-target");
     const list = col.querySelector(".cards");
@@ -181,6 +186,7 @@ export function initBoard(ctx) {
     const overBlocked = over && over.classList.contains("no-drop");
     const toCol = d.ph.closest(".col");
     pendingRender = false;
+    if (commit && overTrash(d.x, d.y)) { render(); ctx.onDelete(d.id); return; }
     if (!commit || !over || !toCol) { render(); return; }
     if (overBlocked) {
       render();

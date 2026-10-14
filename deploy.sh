@@ -142,26 +142,109 @@ fi
 echo "== Deploying"
 $WRANGLER deploy
 
-# 8. Set the keys, if they are not set yet.
+# 8. Set the keys. Cloudflare can't show a secret once it is set, so to
+#    change existing keys you paste the current ones in first.
+# keys_tool <op> <keys json> [name]: prints the new keys JSON.
+#   parse: reads pasted text on stdin (JSON, or "name: key" lines)
+#   new:   makes keys for the comma-separated names in [name]
+#   add, update, delete: change one key
+#   names: prints the names
+#   show:  prints the keys for the names (one per line) in [name], or all keys
+keys_tool() {
+  node -e '
+    const crypto = require("crypto");
+    const [op, json, arg = ""] = process.argv.slice(1);
+    const fail = (m) => { console.error(m); process.exit(1); };
+    const gen = () => "k_" + crypto.randomBytes(24).toString("hex");
+    const keys = json ? JSON.parse(json) : {};
+    const out = (k) => console.log(JSON.stringify(k));
+    if (op === "parse") {
+      let s = ""; process.stdin.on("data", (d) => s += d).on("end", () => {
+        let k;
+        try { k = JSON.parse(s); } catch {
+          k = {};
+          for (const line of s.split("\n").map((l) => l.trim()).filter(Boolean)) {
+            const i = line.indexOf(":");
+            if (i < 1) fail("Could not read this line: " + line);
+            k[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+          }
+        }
+        if (!k || typeof k !== "object" || Array.isArray(k)) fail("Expected a JSON object or name: key lines.");
+        const e = Object.entries(k);
+        if (!e.length) fail("No keys found.");
+        if (e.some(([n, v]) => !n || typeof v !== "string" || !v)) fail("Every key needs a name and a value.");
+        out(k);
+      });
+    } else if (op === "new") {
+      const names = arg.split(",").map((s) => s.trim()).filter(Boolean);
+      if (!names.length) fail("No names given.");
+      for (const n of names) keys[n] = gen();
+      out(keys);
+    } else if (op === "add") {
+      if (!arg) fail("No name given.");
+      if (arg in keys) fail(arg + " already has a key. Use update to replace it.");
+      keys[arg] = gen(); out(keys);
+    } else if (op === "update") {
+      if (!(arg in keys)) fail("No key named " + arg + ".");
+      keys[arg] = gen(); out(keys);
+    } else if (op === "delete") {
+      if (!(arg in keys)) fail("No key named " + arg + ".");
+      if (Object.keys(keys).length === 1) fail("Can not delete the last key.");
+      delete keys[arg]; out(keys);
+    } else if (op === "names") {
+      console.log(Object.keys(keys).join(", "));
+    } else if (op === "show") {
+      const names = arg ? [...new Set(arg.split("\n").filter(Boolean))] : Object.keys(keys);
+      for (const n of names) if (n in keys) console.log("  " + n + ": " + keys[n]);
+    }' "$@"
+}
+
 if $WRANGLER secret list 2>/dev/null | grep -q '"API_KEYS"'; then
-  echo "== API_KEYS is already set. To change keys, run: npx wrangler secret put API_KEYS"
+  read -r -p "API_KEYS is already set. Add, update or delete keys? [y/N]: " CHANGE_KEYS
+  if [[ "$CHANGE_KEYS" =~ ^[Yy] ]]; then
+    while true; do
+      echo "Paste your current keys: the JSON, or one \"name: key\" per line. Finish with an empty line."
+      PASTED=""
+      while IFS= read -r line && [ -n "$line" ]; do PASTED+="$line"$'\n'; done
+      if KEYS_JSON="$(printf '%s' "$PASTED" | keys_tool parse "")"; then break; fi
+    done
+    CHANGED=""
+    while true; do
+      echo "Keys: $(keys_tool names "$KEYS_JSON")"
+      read -r -p "[a]dd, [u]pdate (new key for a name), [d]elete, [s]ave, [q]uit without saving: " ACTION
+      case "$ACTION" in
+        a|u|d)
+          read -r -p "Name: " NAME
+          NAME="$(printf '%s' "$NAME" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          case "$ACTION" in a) OP=add; DONE=Added;; u) OP=update; DONE=Updated;; d) OP=delete; DONE=Deleted;; esac
+          if NEXT="$(keys_tool "$OP" "$KEYS_JSON" "$NAME")"; then
+            KEYS_JSON="$NEXT"
+            if [ "$OP" != "delete" ]; then CHANGED+="$NAME"$'\n'; fi
+            echo "   $DONE $NAME (not saved yet)."
+          fi
+          ;;
+        s)
+          echo "$KEYS_JSON" | $WRANGLER secret put API_KEYS
+          if [ -n "$CHANGED" ]; then
+            echo
+            echo "New keys (save them now, they are not shown again):"
+            keys_tool show "$KEYS_JSON" "$CHANGED"
+          fi
+          break
+          ;;
+        q) echo "   Keys not changed."; break ;;
+        *) echo "Type a, u, d, s or q." ;;
+      esac
+    done
+  fi
 else
   echo "== Setting API_KEYS"
   read -r -p "Key names, separated by commas (e.g. alice,bob,claude-agent): " NAMES
-  KEYS_JSON="$(node -e '
-    const crypto = require("crypto");
-    const names = process.argv[1].split(",").map(s => s.trim()).filter(Boolean);
-    if (!names.length) { console.error("No names given."); process.exit(1); }
-    const keys = {};
-    for (const n of names) keys[n] = "k_" + crypto.randomBytes(24).toString("hex");
-    console.log(JSON.stringify(keys));' "$NAMES")"
+  KEYS_JSON="$(keys_tool new "" "$NAMES")"
   echo "$KEYS_JSON" | $WRANGLER secret put API_KEYS
   echo
   echo "Your keys (save them now, they are not shown again):"
-  echo "$KEYS_JSON" | node -e '
-    let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
-      for (const [n, k] of Object.entries(JSON.parse(s))) console.log("  " + n + ": " + k);
-    });'
+  keys_tool show "$KEYS_JSON"
 fi
 
 echo

@@ -8,8 +8,6 @@ const ICON = {
   food: '<path d="M4 12h16a8 8 0 0 1-16 0z"/><path d="M14 3l-3 7M19 4l-5 6"/>',
   sight: '<path d="M3 6.5c5 1.3 13 1.3 18 0M5.5 10h13M7.5 7.5V21M16.5 7.5V21"/>',
   walk: '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16"/>',
-  foot: '<circle cx="12.5" cy="4.5" r="1.8"/><path d="M12 8.5l-1.5 5.5L8 21M10.5 14l3.5 2.5V21M8 11l3.5-2.5 3.5 3"/>',
-  taxi: '<path d="M3 16v-3l2-5a2 2 0 0 1 1.9-1.4h10.2A2 2 0 0 1 19 8l2 5v3z"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   chev: '<path d="M6 9l6 6 6-6"/>',
   pin: '<path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
@@ -23,11 +21,9 @@ const ICON = {
   flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>'
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'
 };
-
-// Travel mode -> icon.
-export const LEG = { walk: "foot", taxi: "taxi", train: "train", any: "taxi" };
 
 export const ico = (k, s = 18) => `<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k] ?? ""}</svg>`;
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

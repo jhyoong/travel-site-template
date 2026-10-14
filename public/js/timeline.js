@@ -1,6 +1,6 @@
 // Timeline view: a button per day, then one section per day with its stops
-// in order and the travel between them.
-import { ico, esc, plural, clashText, reduce, LEG } from "./ui.js";
+// in order.
+import { ico, esc, plural, clashText, reduce } from "./ui.js";
 import { fmtDur, FREE_MIN } from "./schedule.js";
 import { safeHref } from "./api.js";
 
@@ -53,8 +53,8 @@ export function initTimeline(ctx) {
     </li>`;
   }
 
-  const legRow = (r) => `<li class="leg"><span class="leg-text">${ico(LEG[r.leg.mode], 16)}<span>${r.leg.text}${r.free_min >= FREE_MIN ? `<span class="free">, then ${fmtDur(r.free_min)} free</span>` : ""}</span></span></li>`;
-  const edgeRow = (t, leg, label) => `<li class="leg edge"><span class="leg-time">${t}</span><span class="leg-dot" aria-hidden="true"></span><span class="leg-text">${ico(LEG[leg.mode], 16)}<span>${label} (${leg.text})</span></span></li>`;
+  const freeRow = (r) => `<li class="leg"><span class="leg-text"><span class="free">${fmtDur(r.free_min)} free</span></span></li>`;
+  const edgeRow = (t, label) => `<li class="leg edge"><span class="leg-time">${t}</span><span class="leg-dot" aria-hidden="true"></span><span class="leg-text">${ico("pin", 16)}<span>${label}</span></span></li>`;
 
   function dayHTML(d, isLast, canEdit) {
     const sc = d.schedule, rows = sc.stops, first = rows[0], last = rows[rows.length - 1];
@@ -65,9 +65,9 @@ export function initTimeline(ctx) {
       : "Nothing planned yet.";
     let list = "";
     if (rows.length) {
-      if (sc.start_leg) list += edgeRow(sc.leave_at, sc.start_leg, d.start_place ? "Leave " + esc(d.start_place) : "Set off");
-      rows.forEach((r, i) => { if (i > 0) list += legRow(r); list += stopHTML(r, canEdit); });
-      if (sc.back_leg) list += edgeRow(sc.back_at, sc.back_leg, d.end_place ? "Back at " + esc(d.end_place) : "Arrive at the end point");
+      if (sc.leave_at) list += edgeRow(sc.leave_at, d.start_place ? "Leave " + esc(d.start_place) : "Set off");
+      rows.forEach((r) => { if (r.free_min >= FREE_MIN) list += freeRow(r); list += stopHTML(r, canEdit); });
+      if (sc.back_at) list += edgeRow(sc.back_at, d.end_place ? "Back at " + esc(d.end_place) : "Arrive at the end point");
       if (isLast) list += `<li class="stop tripend"><div class="time"><span class="t">${last.end}</span></div><div class="node" aria-hidden="true">${ico("flag", 16)}</div><div class="te-text"><strong>End of trip</strong><span>${d.long}</span></div></li>`;
     }
     const warn = clashText(sc);
