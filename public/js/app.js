@@ -8,6 +8,7 @@ import { initTimeline } from "./timeline.js";
 import { initBoard } from "./board.js";
 import { initMap } from "./map.js";
 import { renderTripForm } from "./setup.js";
+import { renderBackupSection } from "./backup.js";
 import { initStopDialog } from "./stop-dialog.js";
 import { initDayDialog } from "./day-dialog.js";
 import { initHistory } from "./history.js";
@@ -355,6 +356,16 @@ function showSetup() {
     onSaved: () => load(),
     onAuthFailed: authFailed
   });
+  renderBackupSection($("setup-backup"), {
+    showDownload: false,
+    onRestored: restored,
+    onAuthFailed: authFailed
+  });
+}
+
+function restored() {
+  load();
+  toast("Backup restored.");
 }
 
 // Fetches the itinerary (and the key name on first load) and shows the
@@ -426,6 +437,11 @@ $("trip-button").addEventListener("click", () => {
     submitLabel: "Save",
     onCancel: () => dialog.close(),
     onSaved: () => { dialog.close(); load(); },
+    onAuthFailed: () => { dialog.close(); authFailed(); }
+  });
+  renderBackupSection($("trip-dialog-backup"), {
+    showDownload: true,
+    onRestored: () => { dialog.close(); restored(); },
     onAuthFailed: () => { dialog.close(); authFailed(); }
   });
   dialog.showModal();

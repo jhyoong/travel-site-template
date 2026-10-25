@@ -123,6 +123,8 @@ const PROTECTED = [
   ['DELETE', '/api/stops/1'],
   ['POST', '/api/stops/1/move', { date: null, index: 0 }],
   ['GET', '/api/audit'],
+  ['GET', '/api/backup'],
+  ['POST', '/api/restore', {}],
 ];
 if (!VIEW_PUBLIC) PROTECTED.push(['GET', '/api/itinerary']);
 
@@ -574,4 +576,174 @@ test('audit: newest first, limit rules, parsed snapshots', async (t) => {
   for (const bad of ['0', '-1', '1.5', 'abc', '']) {
     assertError(await api('GET', `/api/audit?limit=${bad}`, { key: KEY_A }), 400, /limit.*positive integer/);
   }
+});
+
+test('audit: before_id pages back through older entries', async (t) => {
+  const ids = [];
+  for (let i = 0; i < 3; i++) ids.push((await createStop({ date: DAY1, title: `page ${i}` })).id);
+  t.after(() => cleanup(ids));
+
+  const first = await api('GET', '/api/audit?limit=2', { key: KEY_A });
+  assert.equal(first.status, 200, first.text);
+  const oldest = first.data.entries[1].id;
+  const next = await api('GET', `/api/audit?limit=2&before_id=${oldest}`, { key: KEY_A });
+  assert.equal(next.status, 200, next.text);
+  assert.equal(next.data.entries.length, 2);
+  assert.equal(next.data.entries[0].id, oldest - 1);
+  assert.ok(next.data.entries.every((e) => e.id < oldest));
+
+  const none = await api('GET', '/api/audit?before_id=1', { key: KEY_A });
+  assert.equal(none.status, 200);
+  assert.deepEqual(none.data.entries, []);
+
+  for (const bad of ['0', '-1', '1.5', 'abc', '']) {
+    assertError(await api('GET', `/api/audit?before_id=${bad}`, { key: KEY_A }), 400, /before_id.*positive integer/);
+  }
+});
+
+// ---------- Backup and restore ----------
+// Restore replaces everything, so each test puts the original data back.
+
+const AUDIT_KEYS = ['action', 'actor', 'after', 'before', 'id', 'item_id', 'ts'];
+
+async function getBackup(key = KEY_A) {
+  const res = await api('GET', '/api/backup', { key });
+  assert.equal(res.status, 200, res.text);
+  return res;
+}
+
+async function restore(backup) {
+  return api('POST', '/api/restore', { key: KEY_A, body: backup });
+}
+
+// The backup without the fields that change on every download.
+function contents(backup) {
+  const { exported_at, exported_by, ...rest } = backup;
+  return rest;
+}
+
+test('backup: returns every table and column', async (t) => {
+  const stop = await createStop({ date: DAY1, title: 'backup me', late_ok: true, lat: 35.5, lng: 135.25 });
+  const idea = await createStop({ title: 'backup idea' });
+  t.after(() => cleanup([stop.id, idea.id]));
+  await api('PUT', `/api/days/${DAY5}`, { key: KEY_A, body: { title: 'Backup day' } });
+
+  const res = await getBackup(KEY_B);
+  assert.match(res.headers.get('content-disposition'), /^attachment; filename="itinerary-backup-\d{4}-\d{2}-\d{2}\.json"$/);
+  const b = res.data;
+  assert.equal(b.format, 'itinerary-backup');
+  assert.equal(b.version, 1);
+  assert.equal(b.exported_by, NAME_B);
+  assert.match(b.exported_at, /Z$/);
+  assert.deepEqual(Object.keys(b.trip).sort(), ['end_date', 'name', 'start_date', 'timezone', 'travellers', 'updated_at', 'updated_by']);
+  assert.equal(b.trip.name, 'Test Trip');
+  assert.ok(b.days.some((d) => d.date === DAY5 && d.title === 'Backup day'));
+
+  const s = b.stops.find((x) => x.id === stop.id);
+  assert.deepEqual(Object.keys(s).sort(), STOP_KEYS);
+  assert.equal(s.late_ok, 1);
+  assert.equal(s.lat, 35.5);
+  assert.ok(b.stops.some((x) => x.id === idea.id && x.date === null && x.status === 'idea'));
+
+  const all = (await api('GET', '/api/audit?limit=1', { key: KEY_A })).data.entries[0];
+  const last = b.audit_log[b.audit_log.length - 1];
+  assert.deepEqual(Object.keys(last).sort(), AUDIT_KEYS);
+  assert.equal(last.id, all.id);
+  assert.equal(typeof last.after, 'string');
+  assert.ok(b.audit_log.every((e, i) => i === 0 || e.id > b.audit_log[i - 1].id));
+});
+
+test('restore: puts back exactly what was backed up', async (t) => {
+  const keep = await createStop({ date: DAY2, title: 'kept', notes: 'keep me', fixed_time: '10:00' });
+  const original = (await getBackup()).data;
+  t.after(async () => {
+    await restore(original);
+    await cleanup([keep.id]);
+  });
+
+  // Change things after the backup.
+  const extra = await createStop({ date: DAY2, title: 'added later' });
+  await api('PUT', `/api/stops/${keep.id}`, { key: KEY_A, body: { notes: 'changed' } });
+  await api('PUT', '/api/trip', { key: KEY_A, body: { name: 'Changed Trip' } });
+  await api('PUT', `/api/days/${DAY2}`, { key: KEY_A, body: { title: 'Changed day' } });
+
+  const res = await restore(original);
+  assert.equal(res.status, 200, res.text);
+  assert.deepEqual(res.data.restored, {
+    trip: 1, days: original.days.length, stops: original.stops.length, audit_log: original.audit_log.length,
+  });
+
+  const after = (await getBackup()).data;
+  assert.deepEqual(contents(after), contents(original));
+  const it = await getItinerary();
+  assert.equal(it.trip.name, 'Test Trip');
+  assert.ok(!column(it, DAY2).some((s) => s.id === extra.id));
+  assert.equal(column(it, DAY2).find((s) => s.id === keep.id).notes, 'keep me');
+
+  // New stops get ids above anything in the backup.
+  const maxId = Math.max(0, ...original.stops.map((s) => s.id), extra.id);
+  const fresh = await createStop({ date: DAY2, title: 'after restore' });
+  assert.ok(fresh.id > maxId, `new id ${fresh.id} should be above ${maxId}`);
+  const entry = await latestAudit();
+  assert.ok(entry.id > Math.max(...original.audit_log.map((e) => e.id)));
+});
+
+test('restore: an invalid backup is rejected and changes nothing', async (t) => {
+  const stop = await createStop({ date: DAY1, title: 'stay put' });
+  t.after(() => cleanup([stop.id]));
+  const original = (await getBackup()).data;
+  const copy = () => JSON.parse(JSON.stringify(original));
+  const firstStop = (b) => b.stops.find((s) => s.id === stop.id);
+
+  const cases = [
+    [(b) => { b.format = 'other'; }, /not an itinerary backup/],
+    [(b) => { b.version = 2; }, /Unsupported backup version/],
+    [(b) => { b.stops = {}; }, /"stops" must be an array/],
+    [(b) => { b.trip = null; }, /trip.*must be a JSON object/],
+    [(b) => { b.trip.end_date = '2098-01-01'; }, /trip.*end_date/],
+    [(b) => { firstStop(b).kind = 'boat'; }, /stops\[\d+\].*kind/],
+    [(b) => { firstStop(b).date = OUTSIDE; }, /stops\[\d+\].*outside the trip dates/],
+    [(b) => { firstStop(b).late_ok = true; }, /late_ok.*0 or 1/],
+    [(b) => { delete firstStop(b).notes; }, /Missing field\(s\): notes/],
+    [(b) => { firstStop(b).extra = 1; }, /Unknown field\(s\): extra/],
+    [(b) => { b.stops.push({ ...firstStop(b), position: 99 }); }, /more than one stop with id/],
+    [(b) => { firstStop(b).position += 50; }, /positions in .* no gaps/],
+    [(b) => { b.days.push({ ...b.days[0] }); }, /more than one day with date/],
+    [(b) => { b.days[0].start_time = null; }, /days\[0\].*start_time.*cannot be null/],
+    [(b) => { b.audit_log[0].action = 'restore'; }, /audit_log\[0\].*action/],
+    [(b) => { b.audit_log[0].before = { a: 1 }; }, /audit_log\[0\].*before/],
+    [(b) => { b.audit_log.push({ ...b.audit_log[0] }); }, /more than one audit_log entry with id/],
+  ];
+  assert.ok(original.days.length > 0 && original.audit_log.length > 0, 'test needs days and audit rows');
+  for (const [change, pattern] of cases) {
+    const b = copy();
+    change(b);
+    assertError(await restore(b), 400, pattern);
+  }
+  assertError(await api('POST', '/api/restore', { key: KEY_A, rawBody: '[1]' }), 400, /JSON object/);
+
+  assert.deepEqual(contents((await getBackup()).data), contents(original));
+});
+
+test('restore: handles a large change history', async (t) => {
+  const original = (await getBackup()).data;
+  t.after(() => restore(original));
+
+  // About 3 MB of history, so the inserts are split into several pieces.
+  const big = JSON.parse(JSON.stringify(original));
+  let id = Math.max(0, ...original.audit_log.map((e) => e.id));
+  const notes = 'x'.repeat(2000);
+  for (let i = 0; i < 1500; i++) {
+    big.audit_log.push({
+      id: ++id, ts: '2099-01-01T00:00:00.000Z', actor: NAME_A, action: 'update', item_id: 1,
+      before: JSON.stringify({ title: `before ${i}`, notes }), after: JSON.stringify({ title: `after ${i}`, notes }),
+    });
+  }
+  const res = await restore(big);
+  assert.equal(res.status, 200, res.text);
+  assert.equal(res.data.restored.audit_log, big.audit_log.length);
+  assert.deepEqual(contents((await getBackup()).data), contents(big));
+
+  const page = await api('GET', `/api/audit?limit=1&before_id=${id}`, { key: KEY_A });
+  assert.equal(page.data.entries[0].before.title, 'before 1498');
 });

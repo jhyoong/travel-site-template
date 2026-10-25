@@ -16,6 +16,8 @@ const STOP_FIELDS = [
 const TRIP_COLUMNS = [...TRIP_FIELDS, 'updated_at', 'updated_by'];
 const DAY_COLUMNS = ['date', ...DAY_FIELDS, 'updated_at', 'updated_by'];
 const STOP_COLUMNS = ['id', 'position', ...STOP_FIELDS, 'created_at', 'created_by', 'updated_at', 'updated_by'];
+const AUDIT_COLUMNS = ['id', 'ts', 'actor', 'action', 'item_id', 'before', 'after'];
+const AUDIT_ACTIONS = ['create', 'update', 'delete', 'move', 'update_trip', 'update_day'];
 
 const MAX_LENGTHS = {
   name: 200,
@@ -47,6 +49,12 @@ const BOOL_FIELDS = ['late_ok'];
 const TIME_FIELDS = ['start_time', 'fixed_time', 'after_time'];
 
 const MAX_BODY_BYTES = 64 * 1024;
+const RESTORE_MAX_BYTES = 10 * 1024 * 1024;
+// Restore inserts each table's rows as JSON, in pieces of at most this many
+// characters (D1 limits a single bound value to 2 MB).
+const RESTORE_CHUNK_CHARS = 500 * 1024;
+const BACKUP_FORMAT = 'itinerary-backup';
+const BACKUP_VERSION = 1;
 const AUDIT_DEFAULT_LIMIT = 50;
 const AUDIT_MAX_LIMIT = 200;
 
@@ -178,10 +186,10 @@ function isHttpUrl(s) {
   }
 }
 
-async function readJsonObject(request) {
+async function readJsonObject(request, maxBytes = MAX_BODY_BYTES) {
   const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) {
-    throw new HttpError(400, `Request body is too large (max ${MAX_BODY_BYTES} bytes).`);
+  if (raw.length > maxBytes) {
+    throw new HttpError(400, `Request body is too large (max ${maxBytes} bytes).`);
   }
   let body;
   try {
@@ -616,9 +624,17 @@ async function handleAudit(url, env) {
     }
     limit = Math.min(Number(raw), AUDIT_MAX_LIMIT);
   }
+  let beforeId = null;
+  const rawBefore = url.searchParams.get('before_id');
+  if (rawBefore !== null) {
+    if (!/^[1-9]\d{0,15}$/.test(rawBefore)) {
+      throw new HttpError(400, `Query parameter "before_id" must be a positive integer. Got "${rawBefore}".`);
+    }
+    beforeId = Number(rawBefore);
+  }
   const { results } = await env.DB.prepare(
-    'SELECT id, ts, actor, action, item_id, before, after FROM audit_log ORDER BY id DESC LIMIT ?'
-  ).bind(limit).all();
+    'SELECT id, ts, actor, action, item_id, before, after FROM audit_log WHERE ? IS NULL OR id < ? ORDER BY id DESC LIMIT ?'
+  ).bind(beforeId, beforeId, limit).all();
   const entries = results.map((r) => ({
     id: r.id,
     ts: r.ts,
@@ -629,6 +645,230 @@ async function handleAudit(url, env) {
     after: parseSnapshot(r.after),
   }));
   return json({ entries });
+}
+
+// ---------- Backup and restore ----------
+
+// Everything in the database. Rows hold the stored values as they are
+// (late_ok is 0/1; audit before/after are JSON text).
+async function handleBackup(env, actor) {
+  const [trip, days, stops, audit] = await env.DB.batch([
+    env.DB.prepare('SELECT * FROM trip WHERE id = 1'),
+    env.DB.prepare('SELECT * FROM days ORDER BY date'),
+    env.DB.prepare('SELECT * FROM stops ORDER BY id'),
+    env.DB.prepare(`SELECT ${AUDIT_COLUMNS.join(', ')} FROM audit_log ORDER BY id`),
+  ]);
+  const tripRow = trip.results[0];
+  if (!tripRow) throw new HttpError(500, 'Trip row is missing. Apply schema.sql to the database.');
+  const ts = now();
+  const backup = {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    exported_at: ts,
+    exported_by: actor,
+    trip: pick(tripRow, TRIP_COLUMNS),
+    days: days.results.map((r) => pick(r, DAY_COLUMNS)),
+    stops: stops.results.map((r) => pick(r, STOP_COLUMNS)),
+    audit_log: audit.results.map((r) => pick(r, AUDIT_COLUMNS)),
+  };
+  return json(backup, 200, {
+    'Content-Disposition': `attachment; filename="itinerary-backup-${ts.slice(0, 10)}.json"`,
+  });
+}
+
+// Runs fn and adds where in the backup the problem is to any 400 message.
+function at(where, fn) {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 400) {
+      throw new HttpError(400, `Backup ${where}: ${err.message}`);
+    }
+    throw err;
+  }
+}
+
+function backupObject(value, name) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpError(400, `"${name}" must be a JSON object.`);
+  }
+  return value;
+}
+
+// The row must have exactly these columns.
+function checkColumns(row, cols) {
+  checkUnknownFields(row, cols);
+  const missing = cols.filter((c) => !(c in row));
+  if (missing.length) throw new HttpError(400, `Missing field(s): ${missing.join(', ')}.`);
+}
+
+function metaString(row, field, nullable) {
+  const v = row[field];
+  if (v === null && nullable) return null;
+  if (typeof v !== 'string' || v === '') {
+    throw new HttpError(400, `Field "${field}" must be a non-empty string${nullable ? ' or null' : ''}.`);
+  }
+  return v;
+}
+
+function positiveInt(row, field, nullable) {
+  const v = row[field];
+  if (v === null && nullable) return null;
+  if (!Number.isSafeInteger(v) || v < 1) {
+    throw new HttpError(400, `Field "${field}" must be a positive whole number${nullable ? ' or null' : ''}.`);
+  }
+  return v;
+}
+
+function restoreTrip(raw) {
+  const row = backupObject(raw, 'trip');
+  checkColumns(row, TRIP_COLUMNS);
+  const out = cleanFields(pick(row, TRIP_FIELDS), TRIP_FIELDS);
+  if (out.start_date != null && out.end_date != null) {
+    if (out.end_date < out.start_date) {
+      throw new HttpError(400, `Field "end_date" (${out.end_date}) must be on or after "start_date" (${out.start_date}).`);
+    }
+    if (dayCount(out.start_date, out.end_date) > MAX_DAYS) {
+      throw new HttpError(400, `The trip can be at most ${MAX_DAYS} days long.`);
+    }
+  }
+  out.updated_at = metaString(row, 'updated_at', true);
+  out.updated_by = metaString(row, 'updated_by', true);
+  return out;
+}
+
+function restoreDay(raw) {
+  const row = backupObject(raw, 'day');
+  checkColumns(row, DAY_COLUMNS);
+  const out = cleanFields(pick(row, DAY_FIELDS), DAY_FIELDS);
+  rejectNulls(out, ['start_time']);
+  checkPair(out, 'start_lat', 'start_lng');
+  checkPair(out, 'end_lat', 'end_lng');
+  if (typeof row.date !== 'string' || !isRealDate(row.date)) {
+    throw new HttpError(400, 'Field "date" must be a real calendar date in format YYYY-MM-DD.');
+  }
+  out.date = row.date;
+  out.updated_at = metaString(row, 'updated_at');
+  out.updated_by = metaString(row, 'updated_by');
+  return out;
+}
+
+function restoreStop(raw, trip) {
+  const row = backupObject(raw, 'stop');
+  checkColumns(row, STOP_COLUMNS);
+  if (row.late_ok !== 0 && row.late_ok !== 1) throw new HttpError(400, 'Field "late_ok" must be 0 or 1.');
+  const out = cleanFields({ ...pick(row, STOP_FIELDS), late_ok: row.late_ok === 1 }, STOP_FIELDS);
+  requireTitle(out);
+  rejectNulls(out, ['kind', 'duration_min', 'status']);
+  checkIdeaRule(out);
+  checkPair(out, 'lat', 'lng');
+  if (out.date != null) checkInTrip(trip, out.date);
+  out.id = positiveInt(row, 'id');
+  if (!Number.isSafeInteger(row.position) || row.position < 0) {
+    throw new HttpError(400, 'Field "position" must be a whole number, 0 or more.');
+  }
+  out.position = row.position;
+  for (const f of ['created_at', 'created_by', 'updated_at', 'updated_by']) out[f] = metaString(row, f);
+  return out;
+}
+
+function restoreAudit(raw) {
+  const row = backupObject(raw, 'audit_log entry');
+  checkColumns(row, AUDIT_COLUMNS);
+  const out = { id: positiveInt(row, 'id'), item_id: positiveInt(row, 'item_id', true) };
+  out.ts = metaString(row, 'ts');
+  out.actor = metaString(row, 'actor');
+  if (!AUDIT_ACTIONS.includes(row.action)) {
+    throw new HttpError(400, `Field "action" must be one of: ${AUDIT_ACTIONS.join(', ')}.`);
+  }
+  out.action = row.action;
+  for (const f of ['before', 'after']) {
+    if (row[f] !== null && typeof row[f] !== 'string') throw new HttpError(400, `Field "${f}" must be a string or null.`);
+    out[f] = row[f];
+  }
+  return out;
+}
+
+function checkUnique(rows, key, name) {
+  const seen = new Set();
+  for (const r of rows) {
+    if (seen.has(r[key])) throw new HttpError(400, `Backup has more than one ${name} with ${key} ${r[key]}.`);
+    seen.add(r[key]);
+  }
+}
+
+// Positions in each column (a date, or Ideas) must be 0..n-1.
+function checkPositions(stops) {
+  const cols = new Map();
+  for (const s of stops) {
+    const key = s.date ?? '';
+    if (!cols.has(key)) cols.set(key, []);
+    cols.get(key).push(s.position);
+  }
+  for (const [key, positions] of cols) {
+    positions.sort((a, b) => a - b);
+    if (positions.some((p, i) => p !== i)) {
+      throw new HttpError(400, `Backup stop positions in ${key || 'Ideas'} must be 0 to ${positions.length - 1} with no gaps or repeats.`);
+    }
+  }
+}
+
+// INSERT statements that read rows from JSON arrays, so a whole table needs
+// only a few statements (D1 limits the number of queries per request).
+function jsonInserts(env, table, cols, rows) {
+  const select = cols.map((c, i) => `json_extract(value, '$[${i}]')`).join(', ');
+  const sql = `INSERT INTO ${table} (${cols.join(', ')}) SELECT ${select} FROM json_each(?)`;
+  const statements = [];
+  let chunk = [];
+  let size = 0;
+  const flush = () => {
+    if (chunk.length) statements.push(env.DB.prepare(sql).bind(`[${chunk.join(',')}]`));
+    chunk = [];
+    size = 0;
+  };
+  for (const row of rows) {
+    const text = JSON.stringify(cols.map((c) => row[c] ?? null));
+    if (size + text.length > RESTORE_CHUNK_CHARS) flush();
+    chunk.push(text);
+    size += text.length + 1;
+  }
+  flush();
+  return statements;
+}
+
+// Replaces everything in the database with the backup, in one transaction.
+async function handleRestore(request, env) {
+  const body = await readJsonObject(request, RESTORE_MAX_BYTES);
+  if (body.format !== BACKUP_FORMAT) {
+    throw new HttpError(400, `This is not an itinerary backup (expected "format": "${BACKUP_FORMAT}").`);
+  }
+  if (body.version !== BACKUP_VERSION) {
+    throw new HttpError(400, `Unsupported backup version ${JSON.stringify(body.version)}. This site reads version ${BACKUP_VERSION}.`);
+  }
+  for (const name of ['days', 'stops', 'audit_log']) {
+    if (!Array.isArray(body[name])) throw new HttpError(400, `Backup "${name}" must be an array.`);
+  }
+  const trip = at('trip', () => restoreTrip(body.trip));
+  const days = body.days.map((r, i) => at(`days[${i}]`, () => restoreDay(r)));
+  const stops = body.stops.map((r, i) => at(`stops[${i}]`, () => restoreStop(r, trip)));
+  const audit = body.audit_log.map((r, i) => at(`audit_log[${i}]`, () => restoreAudit(r)));
+  checkUnique(days, 'date', 'day');
+  checkUnique(stops, 'id', 'stop');
+  checkUnique(audit, 'id', 'audit_log entry');
+  checkPositions(stops);
+
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM audit_log'),
+    env.DB.prepare('DELETE FROM stops'),
+    env.DB.prepare('DELETE FROM days'),
+    env.DB.prepare(
+      `INSERT OR REPLACE INTO trip (id, ${TRIP_COLUMNS.join(', ')}) VALUES (1, ${TRIP_COLUMNS.map(() => '?').join(', ')})`
+    ).bind(...TRIP_COLUMNS.map((c) => trip[c] ?? null)),
+    ...jsonInserts(env, 'days', DAY_COLUMNS, days),
+    ...jsonInserts(env, 'stops', STOP_COLUMNS, stops),
+    ...jsonInserts(env, 'audit_log', AUDIT_COLUMNS, audit),
+  ]);
+  return json({ restored: { trip: 1, days: days.length, stops: stops.length, audit_log: audit.length } });
 }
 
 function methodNotAllowed(allowed) {
@@ -697,6 +937,18 @@ async function handleApi(request, env, url) {
     return handleAudit(url, env);
   }
 
+  if (path === '/api/backup') {
+    if (method !== 'GET') throw methodNotAllowed(['GET']);
+    const actor = await requireActor(request, env);
+    return handleBackup(env, actor);
+  }
+
+  if (path === '/api/restore') {
+    if (method !== 'POST') throw methodNotAllowed(['POST']);
+    await requireActor(request, env);
+    return handleRestore(request, env);
+  }
+
   throw new HttpError(404, `Unknown API route: ${method} ${url.pathname}. See GET /api for the list of endpoints.`);
 }
 
@@ -755,7 +1007,7 @@ Send your key in every request (except GET /api):
 Each key has a name. That name is recorded as the actor on every change.
 Missing or invalid key -> 401.
 GET /api/itinerary may be open without a key if the site owner enabled
-public viewing. Writes and the audit log always need a key.
+public viewing. Writes, the audit log, backup and restore always need a key.
 
 ENDPOINTS
 ---------
@@ -792,11 +1044,28 @@ POST   /api/stops/:id/move     Reorder a stop or move it to another day or Ideas
 DELETE /api/stops/:id          Delete a stop. -> {"deleted": <id>}. 404 if missing.
 GET    /api/audit?limit=50     Recent changes, newest first.
                                limit: positive integer, default ${AUDIT_DEFAULT_LIMIT}, max ${AUDIT_MAX_LIMIT}.
+                               before_id (optional): only entries with a smaller id.
+                               To page back, pass the smallest id you have.
                                -> {"entries": [{"id","ts","actor","action",
                                    "item_id","before","after"}]}
                                action: create, update, delete, move, update_trip, update_day.
                                item_id is the stop id (null for trip and day changes).
                                before/after are full row snapshots (or null).
+                               The full history is kept; nothing is deleted.
+GET    /api/backup             Download everything: trip, days, stops and the
+                               full change history.
+                               -> {"format": "${BACKUP_FORMAT}", "version": ${BACKUP_VERSION},
+                                   "exported_at", "exported_by", "trip": {...},
+                                   "days": [...], "stops": [...], "audit_log": [...]}
+                               Rows hold stored values: late_ok is 0 or 1, and
+                               audit before/after are JSON text.
+POST   /api/restore            Replace EVERYTHING with a backup. Body: a file from
+                               GET /api/backup (max ${RESTORE_MAX_BYTES / 1024 / 1024} MB). The whole
+                               backup is checked first; if anything is invalid,
+                               nothing changes (400). Stop ids and the change
+                               history are kept as in the backup. No change-log
+                               entry is added for the restore itself.
+                               -> {"restored": {"trip": 1, "days", "stops", "audit_log"}}
 
 OBJECTS
 -------
@@ -905,5 +1174,10 @@ curl -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" 
 curl -X DELETE -H "Authorization: Bearer $KEY" ${origin}/api/stops/1
 
 curl -H "Authorization: Bearer $KEY" "${origin}/api/audit?limit=20"
+
+curl -H "Authorization: Bearer $KEY" -o backup.json ${origin}/api/backup
+
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \\
+  --data-binary @backup.json ${origin}/api/restore
 `;
 }
