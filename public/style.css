@@ -260,6 +260,10 @@ button.bc-body{cursor:pointer}
 button.bc-body:hover .bc-title{text-decoration:underline;text-decoration-color:var(--ink-3);text-underline-offset:3px}
 .bc-title{display:block;font-size:15px;font-weight:600;line-height:1.3}
 .bc-meta{display:block;font-size:13px;color:var(--ink-2);margin-top:2px;font-variant-numeric:tabular-nums}
+.bc-links{grid-column:2;grid-row:2;display:flex;flex-wrap:wrap;gap:4px 14px;padding:0 12px 10px 0;margin-top:-4px}
+.bc-links a{display:inline-flex;align-items:center;gap:4px;min-height:28px;font-size:13px;font-weight:600;color:var(--ink-2);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.bc-links a:hover{color:var(--ink)}
+.bc .bstub{grid-column:3;grid-row:1 / span 2}
 .bc-late{display:flex;align-items:center;gap:5px;margin-top:4px;font-size:12.5px;font-weight:700;color:var(--warn)}
 .bc.is-suggested,.bc.is-idea{background:transparent;border:1.5px dashed color-mix(in srgb,var(--ink-3) 70%,transparent)}
 .bc.is-suggested .bc-title,.bc.is-idea .bc-title{color:var(--ink-2)}
@@ -402,6 +406,8 @@ dialog h2{margin:0 0 16px;font-size:20px;line-height:1.25}
 .title,.bc-title,.day h2,.trip h1{overflow-wrap:anywhere}
 .bc.ro{grid-template-columns:minmax(0,1fr)}
 .bc.ro .bc-body{padding-left:12px}
+.bc.ro .bc-links{grid-column:1;padding-left:12px}
+.bc.ro .bstub{grid-column:2}
 .bc.ro.is-booked{grid-template-columns:minmax(0,1fr) 58px}
 .board.ro .cards:empty::before{content:"Nothing here yet"}
 
