@@ -3,6 +3,7 @@
 // that opens when the handle is tapped.
 import { ico, esc, plural, clashText, reduce, toast } from "./ui.js";
 import { fmtDur } from "./schedule.js";
+import { safeHref } from "./api.js";
 
 const DAY_MAX = 600, BUSY = 540; // minutes: full load bar, "a long day"
 
@@ -27,9 +28,15 @@ export function initBoard(ctx) {
     const bodyEl = scheduled ? `<button class="bc-body" type="button" data-open="${s.id}" title="Show in timeline">${body}</button>`
       : canEdit ? `<button class="bc-body" type="button" data-edit="${s.id}" title="Edit">${body}</button>`
       : `<div class="bc-body">${body}</div>`;
+    const href = safeHref(s.link);
+    const links = [
+      s.lat != null ? `<a href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}" target="_blank" rel="noopener">${ico("pin", 14)}Maps</a>` : "",
+      href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${ico("link", 14)}Link</a>` : "",
+    ].join("");
     return `<li class="bc is-${st}${canEdit ? "" : " ro"}${landed === s.id ? " landed" : ""}" data-id="${s.id}" style="--day:${c.color}">
       ${canEdit ? `<button class="grip" type="button" aria-label="Move ${esc(s.title)}" aria-haspopup="menu">${ico("grip", 18)}</button>` : ""}
       ${bodyEl}
+      ${links ? `<div class="bc-links">${links}</div>` : ""}
       ${st === "booked" ? `<div class="bstub">${ico("lock", 15)}<span>Booked</span></div>` : ""}
     </li>`;
   }
